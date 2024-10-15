@@ -71,6 +71,18 @@ impl Interpreter {
             }
         }
 
+        self.log_instruction(
+            opcode,
+            &format!(
+                "{}{}{} r{}, 0x{:X}",
+                if load { "LDM" } else { "STM" },
+                if increment { "I" } else { "D" },
+                if pre_index { "B" } else { "A" },
+                base_register_index,
+                opcode & 0xFFFF
+            ),
+        );
+
         Ok(1)
     }
 }

@@ -1,10 +1,13 @@
 mod arithmetic;
 mod branch;
+mod interrupt;
 mod transfer;
 
 use self::{
     arithmetic::{DATA_PROCESSING_FORMAT, DATA_PROCESSING_MASK},
-    branch::{BRANCH_AND_EXCHANGE_FORMAT, BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK}, transfer::BLOCK_TRANSFER_MASK,
+    branch::{BRANCH_AND_EXCHANGE_FORMAT, BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK},
+    interrupt::{SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK},
+    transfer::{BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK},
 };
 
 use super::{Bus, CoreError};
@@ -61,6 +64,18 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
+    pub fn new() -> Self {
+        let mut interpreter = Self::default();
+
+        interpreter.spsr[0].mode = CpuMode::Fiq;
+        interpreter.spsr[1].mode = CpuMode::Supervisor;
+        interpreter.spsr[2].mode = CpuMode::Irq;
+        interpreter.spsr[3].mode = CpuMode::Abort;
+        interpreter.spsr[4].mode = CpuMode::Undefined;
+
+        interpreter
+    }
+
     pub fn pc_mut(&mut self) -> &mut u32 {
         self.reg_mut(15)
     }
@@ -69,8 +84,8 @@ impl Interpreter {
         self.reg(15)
     }
 
-    pub fn spsr_mut(&mut self) -> &mut ProgramStatusRegister {
-        match self.cpsr.mode {
+    fn spsr_with_mode_mut(&mut self, mode: CpuMode) -> &mut ProgramStatusRegister {
+        match mode {
             CpuMode::Fiq => &mut self.spsr[0],
             CpuMode::Supervisor => &mut self.spsr[1],
             CpuMode::Irq => &mut self.spsr[2],
@@ -83,8 +98,8 @@ impl Interpreter {
         }
     }
 
-    pub fn spsr(&mut self) -> ProgramStatusRegister {
-        match self.cpsr.mode {
+    fn spsr_with_mode(&mut self, mode: CpuMode) -> ProgramStatusRegister {
+        match mode {
             CpuMode::Fiq => self.spsr[0],
             CpuMode::Supervisor => self.spsr[1],
             CpuMode::Irq => self.spsr[2],
@@ -95,6 +110,14 @@ impl Interpreter {
                 self.spsr[0]
             }
         }
+    }
+
+    pub fn spsr_mut(&mut self) -> &mut ProgramStatusRegister {
+        self.spsr_with_mode_mut(self.cpsr.mode)
+    }
+
+    pub fn spsr(&mut self) -> ProgramStatusRegister {
+        self.spsr_with_mode(self.cpsr.mode)
     }
 
     fn reg_with_mode_mut(&mut self, index: usize, mode: CpuMode) -> &mut u32 {
@@ -200,10 +223,12 @@ impl Interpreter {
 
         if (opcode & BRANCH_AND_EXCHANGE_MASK) == BRANCH_AND_EXCHANGE_FORMAT {
             Ok(self.branch_and_exchange(opcode))
-        } else if (opcode & BLOCK_TRANSFER_MASK) == BLOCK_TRANSFER_MASK {
+        } else if (opcode & BLOCK_TRANSFER_MASK) == BLOCK_TRANSFER_FORMAT {
             Ok(self.block_data_transfer(opcode, bus)?)
         } else if (opcode & BRANCH_MASK) == BRANCH_FORMAT {
             Ok(self.branch(opcode))
+        } else if (opcode & SOFTWARE_INTERRUPT_MASK) == SOFTWARE_INTERRUPT_FORMAT {
+            Ok(self.software_interrupt(opcode))
         } else if (opcode & DATA_PROCESSING_MASK) == DATA_PROCESSING_FORMAT {
             Ok(self.process_data(opcode))
         } else {

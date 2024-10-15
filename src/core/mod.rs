@@ -46,7 +46,7 @@ impl Gba {
         bus.register_region(0..=0x3FFF, Rc::new(RefCell::new(bios)));
 
         Ok(Self {
-            cpu: Interpreter::default(),
+            cpu: Interpreter::new(),
             bus,
         })
     }
