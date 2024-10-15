@@ -14,6 +14,7 @@ pub struct MemoryMapping {
     component: Rc<RefCell<dyn Addressable>>,
 }
 
+#[derive(Default)]
 pub struct Bus {
     regions: Vec<MemoryMapping>,
 }
@@ -31,12 +32,6 @@ impl Display for Bus {
 }
 
 impl Bus {
-    pub fn new() -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(Self {
-            regions: Vec::new(),
-        }))
-    }
-
     pub fn register_region(
         &mut self,
         region: RangeInclusive<u32>,
@@ -54,16 +49,16 @@ impl Bus {
         Err(CoreError::InvalidRegion(address))
     }
 
-    pub fn read_word(&mut self, address: u32) -> Result<u32, CoreError> {
-        let low_byte = self.read_byte(address)? as u32;
-        let high_byte = self.read_byte(address + 1)? as u32;
+    pub fn read_word(&mut self, address: u32) -> Result<u16, CoreError> {
+        let low_byte = self.read_byte(address)? as u16;
+        let high_byte = self.read_byte(address + 1)? as u16;
         Ok(low_byte | (high_byte << 8))
     }
 
-    pub fn read_word_bug(&mut self, address: u32) -> Result<u16, CoreError> {
-        let low_byte = self.read_byte(address)? as u16;
-        let high_byte = self.read_byte((address & 0xFF00) | ((address + 1) & 0xFF))? as u16;
-        Ok(low_byte | (high_byte << 8))
+    pub fn read_dword(&mut self, address: u32) -> Result<u32, CoreError> {
+        let low_word = self.read_word(address)? as u32;
+        let high_word = self.read_word(address + 2)? as u32;
+        Ok(low_word | (high_word << 16))
     }
 
     pub fn write_byte(&mut self, address: u32, data: u8) -> Result<(), CoreError> {
@@ -79,6 +74,12 @@ impl Bus {
     pub fn write_word(&mut self, address: u32, data: u16) -> Result<(), CoreError> {
         self.write_byte(address, data as u8)?;
         self.write_byte(address + 1, (data >> 8) as u8)?;
+        Ok(())
+    }
+
+    pub fn write_dword(&mut self, address: u32, data: u32) -> Result<(), CoreError> {
+        self.write_word(address, data as u16)?;
+        self.write_word(address + 2, (data >> 16) as u16)?;
         Ok(())
     }
 }

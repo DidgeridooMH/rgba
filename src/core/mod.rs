@@ -1,18 +1,19 @@
 mod bus;
 pub use bus::*;
 
-mod cpu;
-pub use cpu::*;
+mod interpreter;
+pub use interpreter::*;
 
 mod bios;
 pub use bios::*;
 
+use anyhow::{anyhow, Result};
 use std::{cell::RefCell, fmt, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreError {
     AddressDecode(u8),
-    OpcodeNotImplemented(u8),
+    OpcodeNotImplemented(u32),
     InvalidRegion(u32),
 }
 
@@ -26,31 +27,39 @@ impl fmt::Display for CoreError {
                 write!(f, "Unknown address mode from 0x{:02X}", opcode)
             }
             CoreError::OpcodeNotImplemented(opcode) => {
-                write!(f, "Opcode not implemented: 0x{0:02X}", opcode)
+                write!(f, "Opcode not implemented: 0x{0:08X}", opcode)
             }
         }
     }
 }
 
 pub struct Gba {
-    cycle_count: usize,
-    cpu: Cpu,
+    cpu: Interpreter,
+    bus: Bus,
 }
 
 impl Gba {
-    pub fn new(bios_filename: &str) -> Result<Self, String> {
-        let bus = Bus::new();
+    pub fn new(bios_filename: &str) -> Result<Self> {
+        let mut bus = Bus::default();
 
-        bus.borrow_mut()
-            .register_region(0..=0x3FFF, Rc::new(RefCell::new(Bios::new(bios_filename))));
+        let bios = Bios::new(bios_filename)?;
+        bus.register_region(0..=0x3FFF, Rc::new(RefCell::new(bios)));
 
         Ok(Self {
-            cycle_count: 0,
-            cpu: Cpu::default(),
+            cpu: Interpreter::default(),
+            bus,
         })
     }
 
-    pub fn emulate(&mut self, cycles: usize) -> Result<(), String> {
+    pub fn emulate(&mut self, cycles: usize) -> Result<()> {
+        let mut cycles_done = 0;
+        while cycles_done < cycles {
+            cycles_done += match self.cpu.tick(&mut self.bus) {
+                Ok(cycles) => cycles,
+                Err(e) => return Err(anyhow!("{}", e)),
+            };
+        }
+
         Ok(())
     }
 }

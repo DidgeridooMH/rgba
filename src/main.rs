@@ -1,6 +1,7 @@
 mod core;
 use crate::core::Gba;
 
+use anyhow::Result;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -8,10 +9,15 @@ use clap::Parser;
 struct Args {
     #[arg(short, long)]
     bios: String,
+    #[arg(short, long)]
+    cycles: usize,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = Args::parse();
 
-    let gba = Gba::new(&args.bios);
+    let mut gba = Gba::new(&args.bios)?;
+    gba.emulate(args.cycles)?;
+
+    Ok(())
 }
