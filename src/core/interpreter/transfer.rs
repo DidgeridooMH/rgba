@@ -40,18 +40,8 @@ impl Interpreter {
 
         let load = opcode & (1 << 20) > 0;
         let byte_write = opcode & (1 << 22) > 0;
-        self.log_instruction(
-            opcode,
-            &format!(
-                "{}{} r{}, 0x{:X}",
-                if load { "LDR" } else { "STR" },
-                if byte_write { "B" } else { "W" },
-                base_register_index,
-                operand
-            ),
-        );
-
         let register_index = (opcode >> 12) & 0xF;
+
         let write_back = opcode & (1 << 21) > 0;
         let mode = if !pre_index && write_back {
             CpuMode::User
@@ -88,6 +78,21 @@ impl Interpreter {
         if write_back || !pre_index {
             *self.reg_mut(base_register_index as usize) = address;
         }
+
+        self.log_instruction(
+            opcode,
+            &format!(
+                "{}{}",
+                if load { "LDR" } else { "STR" },
+                if byte_write { "B" } else { "W" },
+            ),
+            &format!(
+                "r{register_index}({:X}) := r{}, 0x{:X}",
+                self.reg(register_index as usize),
+                base_register_index,
+                operand
+            ),
+        );
 
         Ok(1)
     }
@@ -160,13 +165,12 @@ impl Interpreter {
         self.log_instruction(
             opcode,
             &format!(
-                "{}{}{} r{}, 0x{:X}",
-                if load { "LDM" } else { "STM" },
+                "{}{}{}",
                 if increment { "I" } else { "D" },
-                if pre_index { "B" } else { "A" },
-                base_register_index,
-                opcode & 0xFFFF
+                if load { "LDM" } else { "STM" },
+                if pre_index { "B" } else { "A" }
             ),
+            &format!("r{}, 0x{:X}", base_register_index, opcode & 0xFFFF),
         );
 
         Ok(1)

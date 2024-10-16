@@ -2,7 +2,6 @@ mod arithmetic;
 mod branch;
 mod interrupt;
 mod shift;
-pub mod system_io;
 mod transfer;
 
 use self::{
@@ -242,12 +241,41 @@ impl Interpreter {
         }
     }
 
-    pub fn log_instruction(&self, opcode: u32, description: &str) {
-        println!("${:08X}: {:08X} {description}", self.pc() - 4, opcode);
+    pub fn log_instruction(&self, opcode: u32, mneumonic: &str, description: &str) {
+        println!(
+            "${:08X}: {:08X} {mneumonic}{} {description}",
+            self.pc() - 4,
+            opcode,
+            Self::get_condition_label(opcode >> 28)
+        );
     }
 
-    fn check_condition(&self, _condition: u32) -> bool {
-        // TODO: Implement condition checking.
-        true
+    fn get_condition_label(condition_code: u32) -> &'static str {
+        match condition_code {
+            0x0 => "EQ",
+            0x1 => "NE",
+            0x2 => "CS",
+            0x3 => "CC",
+            0x4 => "MI",
+            0x5 => "PL",
+            0x6 => "VS",
+            0x7 => "VC",
+            0x8 => "HI",
+            0x9 => "LS",
+            0xA => "GE",
+            0xB => "LT",
+            0xC => "GT",
+            0xD => "LE",
+            0xE => "",
+            0xF => "NV",
+            _ => unreachable!(),
+        }
+    }
+
+    fn check_condition(&self, condition: u32) -> bool {
+        match condition {
+            0x0 => self.cpsr.zero,
+            _ => true
+        }
     }
 }

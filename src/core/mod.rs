@@ -7,10 +7,12 @@ pub use interpreter::*;
 mod bios;
 pub use bios::*;
 
+mod memory;
+
 use anyhow::{anyhow, Result};
 use std::{cell::RefCell, fmt, rc::Rc};
 
-use self::system_io::SystemIoFlags;
+use memory::{system_io::SystemIoFlags, wram::Wram};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreError {
@@ -46,7 +48,18 @@ impl Gba {
 
         let bios = Bios::new(bios_filename)?;
         bus.register_region(0..=0x3FFF, Rc::new(RefCell::new(bios)));
-        bus.register_region(0x4000200..=0x4700000, Rc::new(RefCell::new(SystemIoFlags::default())));
+        bus.register_region(
+            0x4000200..=0x4700000,
+            Rc::new(RefCell::new(SystemIoFlags::default())),
+        );
+        bus.register_region(
+            0x3000000..=0x3007FFF,
+            Rc::new(RefCell::new(Wram::new(0x3000000, 0x8000))),
+        );
+        bus.register_region(
+            0x8000000..=0xFFFFFFF,
+            Rc::new(RefCell::new(Wram::new(0x8000000, 0x8000000))),
+        );
 
         Ok(Self {
             cpu: Interpreter::new(),

@@ -11,7 +11,7 @@ impl Interpreter {
         *self.pc_mut() = SOFTWARE_INTERRUPT_PC_OFFSET;
         *self.spsr_with_mode_mut(CpuMode::Supervisor) = self.cpsr;
 
-        self.log_instruction(opcode, &format!("SWI 0x{:X}", opcode & 0x00FFFFFF));
+        self.log_instruction(opcode, "SWI", &format!("0x{:X}", opcode & 0x00FFFFFF));
 
         1
     }

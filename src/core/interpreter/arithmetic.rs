@@ -56,9 +56,7 @@ impl Interpreter {
                 let immediate = opcode & 0xFF;
                 (immediate as u32).rotate_right(shift_amount)
             }
-            OperandType::Register => {
-                self.shift_operand(opcode)
-            }
+            OperandType::Register => self.shift_operand(opcode),
         };
 
         let source_register_index: usize = ((opcode >> 16) & 0xF) as usize;
@@ -188,7 +186,8 @@ impl Interpreter {
 
         self.log_instruction(
             opcode,
-            &format!("{mneumonic} r{destination_register_index}({result:X}) := {description}",),
+            mneumonic,
+            &format!("r{destination_register_index}({result:X}) := {description}",),
         );
 
         if operation != DataProcessingOperation::Test

@@ -20,13 +20,14 @@ impl Interpreter {
     /// The number of cycles taken to execute the instruction.
     pub fn branch(&mut self, opcode: u32) -> usize {
         // Offsets are in groups of 4s and signed extended 24 bit.
-        let offset = (((opcode & 0x00FF_FFFF) << 10) >> 8) as i32;
+        let offset = ((opcode & 0x00FF_FFFF) << 10) as i32 >> 8;
         let new_pc = self.pc() as i32 + offset as i32 + 4;
 
         let mneumonic = if opcode & (1 << 24) > 0 { "B" } else { "BL" };
         self.log_instruction(
             opcode,
-            &format!("{mneumonic} (0x{offset:X}) -> ${new_pc:08X}"),
+            mneumonic,
+            &format!("(0x{offset:X}) -> ${new_pc:08X}"),
         );
 
         // Save the old PC address to the link register.
@@ -58,7 +59,7 @@ impl Interpreter {
             InstructionMode::Arm
         };
 
-        self.log_instruction(opcode, &format!("BX {target_register} -> ${new_pc:08X}"));
+        self.log_instruction(opcode, "BX", &format!("{target_register} -> ${new_pc:08X}"));
 
         *self.pc_mut() = new_pc;
         self.instruction_mode = new_mode;
