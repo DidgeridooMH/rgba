@@ -10,6 +10,8 @@ pub use bios::*;
 use anyhow::{anyhow, Result};
 use std::{cell::RefCell, fmt, rc::Rc};
 
+use self::system_io::SystemIoFlags;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreError {
     AddressDecode(u8),
@@ -44,6 +46,7 @@ impl Gba {
 
         let bios = Bios::new(bios_filename)?;
         bus.register_region(0..=0x3FFF, Rc::new(RefCell::new(bios)));
+        bus.register_region(0x4000200..=0x4700000, Rc::new(RefCell::new(SystemIoFlags::default())));
 
         Ok(Self {
             cpu: Interpreter::new(),

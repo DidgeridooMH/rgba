@@ -5,12 +5,6 @@ use std::convert::TryFrom;
 pub const DATA_PROCESSING_MASK: u32 = 0x0C000000;
 pub const DATA_PROCESSING_FORMAT: u32 = 0x00000000;
 
-const SHIFT_TYPE_LSL: u32 = 0;
-const SHIFT_TYPE_LSR: u32 = 1;
-const SHIFT_TYPE_ASR: u32 = 2;
-const SHIFT_TYPE_ROR: u32 = 3;
-
-
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 enum DataProcessingOperation {
@@ -63,22 +57,7 @@ impl Interpreter {
                 (immediate as u32).rotate_right(shift_amount)
             }
             OperandType::Register => {
-                let shift_amount = if opcode & (1 << 4) > 0 {
-                    let shift_register = (opcode >> 8) & 0xF;
-                    (*self.reg_mut(shift_register as usize)) as u32
-                } else {
-                    ((opcode >> 7) & 0x1F) as u32
-                };
-
-                let operand_register_index = opcode & 0xF;
-                let operand_register = *self.reg_mut(operand_register_index as usize);
-                match (opcode >> 5) & 0b11 {
-                    SHIFT_TYPE_LSL => operand_register << shift_amount,
-                    SHIFT_TYPE_LSR => operand_register >> shift_amount,
-                    SHIFT_TYPE_ASR => ((operand_register as i32) >> shift_amount) as u32,
-                    SHIFT_TYPE_ROR => operand_register.rotate_right(shift_amount as u32),
-                    _ => unreachable!(),
-                }
+                self.shift_operand(opcode)
             }
         };
 

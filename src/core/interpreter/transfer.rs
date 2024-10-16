@@ -1,11 +1,97 @@
 use crate::core::{Bus, CoreError};
 
-use super::{CpuMode, Interpreter};
+use super::{CpuMode, Interpreter, OperandType};
+
+pub const SINGLE_TRANSFER_MASK: u32 = 0b0000_1100_0000_0000_0000_0000_0000_0000;
+pub const SINGLE_TRANSFER_FORMAT: u32 = 0b0000_0100_0000_0000_0000_0000_0000_0000;
 
 pub const BLOCK_TRANSFER_MASK: u32 = 0b0000_1110_0000_0000_0000_0000_0000_0000;
 pub const BLOCK_TRANSFER_FORMAT: u32 = 0b0000_1000_0000_0000_0000_0000_0000_0000;
 
 impl Interpreter {
+    // TODO: R15 storage will store the current instruction plus 12. This is due to pipeling that
+    // is not implemented yet.
+    //
+    // TODO: Big endian is not implemented yet.
+    pub fn single_data_transfer(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
+        let operand_type = if opcode & (1 << 25) > 0 {
+            OperandType::Register
+        } else {
+            OperandType::Immediate
+        };
+
+        let operand = match operand_type {
+            OperandType::Immediate => opcode & 0xFFF,
+            OperandType::Register => self.shift_operand(opcode),
+        };
+
+        let base_register_index = (opcode >> 16) & 0xF;
+        let mut address = self.reg(base_register_index as usize);
+
+        let pre_index = opcode & (1 << 24) > 0;
+        let increment = opcode & (1 << 23) > 0;
+        if pre_index {
+            if increment {
+                address += operand;
+            } else {
+                address -= operand;
+            }
+        }
+
+        let load = opcode & (1 << 20) > 0;
+        let byte_write = opcode & (1 << 22) > 0;
+        self.log_instruction(
+            opcode,
+            &format!(
+                "{}{} r{}, 0x{:X}",
+                if load { "LDR" } else { "STR" },
+                if byte_write { "B" } else { "W" },
+                base_register_index,
+                operand
+            ),
+        );
+
+        let register_index = (opcode >> 12) & 0xF;
+        let write_back = opcode & (1 << 21) > 0;
+        let mode = if !pre_index && write_back {
+            CpuMode::User
+        } else {
+            self.cpsr.mode
+        };
+        if load {
+            if byte_write {
+                *self.reg_with_mode_mut(register_index as usize, mode) =
+                    bus.read_byte(address)? as u32;
+            } else {
+                let mut data = bus.read_dword(address)?;
+                if address % 4 == 2 {
+                    data = data.rotate_left(16);
+                }
+                *self.reg_with_mode_mut(register_index as usize, mode) = data;
+            }
+        } else {
+            if byte_write {
+                bus.write_byte(address, self.reg(register_index as usize) as u8)?;
+            } else {
+                bus.write_dword(address, self.reg(register_index as usize))?;
+            }
+        }
+
+        if !pre_index {
+            if increment {
+                address += operand;
+            } else {
+                address -= operand;
+            }
+        }
+
+        if write_back || !pre_index {
+            *self.reg_mut(base_register_index as usize) = address;
+        }
+
+        Ok(1)
+    }
+
     pub fn block_data_transfer(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
         let pre_index = opcode & (1 << 24) > 0;
         let increment = opcode & (1 << 23) > 0;

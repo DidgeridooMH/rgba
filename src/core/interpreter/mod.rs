@@ -1,13 +1,17 @@
 mod arithmetic;
 mod branch;
 mod interrupt;
+mod shift;
+pub mod system_io;
 mod transfer;
 
 use self::{
     arithmetic::{DATA_PROCESSING_FORMAT, DATA_PROCESSING_MASK},
     branch::{BRANCH_AND_EXCHANGE_FORMAT, BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK},
     interrupt::{SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK},
-    transfer::{BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK},
+    transfer::{
+        BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, SINGLE_TRANSFER_FORMAT, SINGLE_TRANSFER_MASK,
+    },
 };
 
 use super::{Bus, CoreError};
@@ -229,6 +233,8 @@ impl Interpreter {
             Ok(self.branch(opcode))
         } else if (opcode & SOFTWARE_INTERRUPT_MASK) == SOFTWARE_INTERRUPT_FORMAT {
             Ok(self.software_interrupt(opcode))
+        } else if (opcode & SINGLE_TRANSFER_MASK) == SINGLE_TRANSFER_FORMAT {
+            Ok(self.single_data_transfer(opcode, bus)?)
         } else if (opcode & DATA_PROCESSING_MASK) == DATA_PROCESSING_FORMAT {
             Ok(self.process_data(opcode))
         } else {
