@@ -4,6 +4,10 @@ mod interrupt;
 mod shift;
 mod transfer;
 
+use transfer::{
+    PSR_TRANSFER_MRS_FORMAT, PSR_TRANSFER_MRS_MASK, PSR_TRANSFER_MSR_FORMAT, PSR_TRANSFER_MSR_MASK,
+};
+
 use self::{
     arithmetic::{DATA_PROCESSING_FORMAT, DATA_PROCESSING_MASK},
     branch::{BRANCH_AND_EXCHANGE_FORMAT, BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK},
@@ -16,6 +20,7 @@ use self::{
 use super::{Bus, CoreError};
 
 #[derive(Copy, Clone, Default)]
+#[repr(u32)]
 enum CpuMode {
     #[default]
     User = 0x10,
@@ -27,7 +32,22 @@ enum CpuMode {
     System = 0x1f,
 }
 
+impl CpuMode {
+    pub fn from_u32(mode: u32) -> CpuMode {
+        match mode {
+            0x10 => CpuMode::User,
+            0x11 => CpuMode::Fiq,
+            0x12 => CpuMode::Irq,
+            0x13 => CpuMode::Supervisor,
+            0x17 => CpuMode::Abort,
+            0x1F => CpuMode::System,
+            _ => CpuMode::Undefined,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Default)]
+#[repr(u32)]
 enum InstructionMode {
     #[default]
     Arm = 0,
@@ -47,6 +67,38 @@ pub struct ProgramStatusRegister {
     mode: CpuMode,
 }
 
+impl ProgramStatusRegister {
+    pub fn to_u32(&self) -> u32 {
+        ((self.signed as u32) << 31)
+            | ((self.zero as u32) << 30)
+            | ((self.carry as u32) << 29)
+            | ((self.overflow as u32) << 28)
+            | ((self.sticky_overflow as u32) << 27)
+            | ((self.irq_disable as u32) << 7)
+            | ((self.fiq_disable as u32) << 6)
+            | ((self.instruction_mode as u32) << 5)
+            | self.mode as u32
+    }
+
+    pub fn from_u32(psr: u32) -> Self {
+        Self {
+            signed: psr & (1 << 31) > 0,
+            zero: psr & (1 << 30) > 0,
+            carry: psr & (1 << 29) > 0,
+            overflow: psr & (1 << 28) > 0,
+            sticky_overflow: psr & (1 << 27) > 0,
+            irq_disable: psr & (1 << 7) > 0,
+            fiq_disable: psr & (1 << 6) > 0,
+            instruction_mode: if psr & (1 << 5) > 0 {
+                InstructionMode::Thumb
+            } else {
+                InstructionMode::Arm
+            },
+            mode: CpuMode::from_u32(psr & 0x1F),
+        }
+    }
+}
+
 enum OperandType {
     Immediate,
     Register,
@@ -62,8 +114,6 @@ pub struct Interpreter {
     und_reg: [u32; 2],
     spsr: [ProgramStatusRegister; 5],
     cpsr: ProgramStatusRegister,
-
-    instruction_mode: InstructionMode,
 }
 
 impl Interpreter {
@@ -234,6 +284,10 @@ impl Interpreter {
             Ok(self.software_interrupt(opcode))
         } else if (opcode & SINGLE_TRANSFER_MASK) == SINGLE_TRANSFER_FORMAT {
             Ok(self.single_data_transfer(opcode, bus)?)
+        } else if (opcode & PSR_TRANSFER_MRS_MASK) == PSR_TRANSFER_MRS_FORMAT {
+            Ok(self.psr_transfer_mrs(opcode))
+        } else if (opcode & PSR_TRANSFER_MSR_MASK) == PSR_TRANSFER_MSR_FORMAT {
+            Ok(self.psr_transfer_msr(opcode))
         } else if (opcode & DATA_PROCESSING_MASK) == DATA_PROCESSING_FORMAT {
             Ok(self.process_data(opcode))
         } else {
@@ -275,7 +329,7 @@ impl Interpreter {
     fn check_condition(&self, condition: u32) -> bool {
         match condition {
             0x0 => self.cpsr.zero,
-            _ => true
+            _ => true,
         }
     }
 }

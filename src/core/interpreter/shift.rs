@@ -24,4 +24,10 @@ impl Interpreter {
             _ => unreachable!(),
         }
     }
+
+    pub fn shift_immediate(opcode: u32) -> u32 {
+        let shift_amount = 2 * ((opcode >> 8) & 0xF);
+        let immediate = opcode & 0xFF;
+        (immediate as u32).rotate_right(shift_amount)
+    }
 }

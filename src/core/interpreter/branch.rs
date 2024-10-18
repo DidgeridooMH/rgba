@@ -62,7 +62,7 @@ impl Interpreter {
         self.log_instruction(opcode, "BX", &format!("{target_register} -> ${new_pc:08X}"));
 
         *self.pc_mut() = new_pc;
-        self.instruction_mode = new_mode;
+        self.cpsr.instruction_mode = new_mode;
 
         BRANCH_CYCLE_COUNT
     }

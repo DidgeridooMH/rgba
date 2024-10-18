@@ -51,11 +51,7 @@ impl Interpreter {
         };
 
         let operand = match operand_type {
-            OperandType::Immediate => {
-                let shift_amount = 2 * ((opcode >> 8) & 0xF);
-                let immediate = opcode & 0xFF;
-                (immediate as u32).rotate_right(shift_amount)
-            }
+            OperandType::Immediate => Self::shift_immediate(opcode),
             OperandType::Register => self.shift_operand(opcode),
         };
 

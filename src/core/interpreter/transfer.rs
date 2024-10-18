@@ -1,12 +1,18 @@
 use crate::core::{Bus, CoreError};
 
-use super::{CpuMode, Interpreter, OperandType};
+use super::{CpuMode, Interpreter, OperandType, ProgramStatusRegister};
 
 pub const SINGLE_TRANSFER_MASK: u32 = 0b0000_1100_0000_0000_0000_0000_0000_0000;
 pub const SINGLE_TRANSFER_FORMAT: u32 = 0b0000_0100_0000_0000_0000_0000_0000_0000;
 
 pub const BLOCK_TRANSFER_MASK: u32 = 0b0000_1110_0000_0000_0000_0000_0000_0000;
 pub const BLOCK_TRANSFER_FORMAT: u32 = 0b0000_1000_0000_0000_0000_0000_0000_0000;
+
+pub const PSR_TRANSFER_MRS_MASK: u32 = 0b0000_1111_1011_1111_0000_0000_0000_0000;
+pub const PSR_TRANSFER_MRS_FORMAT: u32 = 0b0000_0001_0000_1111_0000_0000_0000_0000;
+
+pub const PSR_TRANSFER_MSR_MASK: u32 = 0b0000_1101_1011_0000_1111_0000_0000_0000;
+pub const PSR_TRANSFER_MSR_FORMAT: u32 = 0b0000_0001_0010_0000_1111_0000_0000_0000;
 
 impl Interpreter {
     // TODO: R15 storage will store the current instruction plus 12. This is due to pipeling that
@@ -174,5 +180,78 @@ impl Interpreter {
         );
 
         Ok(1)
+    }
+
+    /// Transfer PSR contents to a register.
+    pub fn psr_transfer_mrs(&mut self, opcode: u32) -> usize {
+        let use_spsr = opcode & (1 << 22) > 0;
+        let psr = if use_spsr { self.spsr() } else { self.cpsr };
+        let destination_register_index = (opcode >> 12) & 0xF;
+
+        let psr = psr.to_u32();
+        *self.reg_mut(destination_register_index as usize) = psr;
+
+        self.log_instruction(
+            opcode,
+            "MRS",
+            &format!(
+                "r{destination_register_index} := {}{:X}",
+                if use_spsr { "spsr" } else { "cpsr" },
+                psr
+            ),
+        );
+
+        1
+    }
+
+    /// Transfer register contents or immediate to PSR.
+    pub fn psr_transfer_msr(&mut self, opcode: u32) -> usize {
+        let operand_type = if opcode & (1 << 25) > 0 {
+            OperandType::Immediate
+        } else {
+            OperandType::Register
+        };
+        let use_spsr = opcode & (1 << 22) > 0;
+
+        let operand = match operand_type {
+            OperandType::Immediate => Self::shift_immediate(opcode),
+            OperandType::Register => self.reg((opcode & 0xF) as usize),
+        };
+
+        let psr = if use_spsr {
+            self.spsr_mut()
+        } else {
+            &mut self.cpsr
+        };
+
+        let psr_operand = ProgramStatusRegister::from_u32(operand);
+        let write_flags = opcode & (1 << 19) > 0;
+        if write_flags {
+            (*psr).zero = psr_operand.zero;
+            (*psr).signed = psr_operand.signed;
+            (*psr).carry = psr_operand.carry;
+            (*psr).overflow = psr_operand.overflow;
+        }
+
+        let write_control = opcode & (1 << 16) > 0;
+        if write_control {
+            (*psr).irq_disable = psr_operand.irq_disable;
+            (*psr).fiq_disable = psr_operand.fiq_disable;
+            (*psr).instruction_mode = psr_operand.instruction_mode;
+            (*psr).mode = psr_operand.mode;
+        }
+
+        self.log_instruction(
+            opcode,
+            "msr",
+            &format!(
+                "{}_{}{}, 0x{operand:X}",
+                if use_spsr { "spsr" } else { "cpsr" },
+                if write_flags { "f" } else { "" },
+                if write_control { "c" } else { "" }
+            ),
+        );
+
+        1
     }
 }

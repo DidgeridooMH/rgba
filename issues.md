@@ -1,0 +1,2 @@
+- [ ] BL and B might be swapped.
+- [ ] 0xe8 not correct execution
