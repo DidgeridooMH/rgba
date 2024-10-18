@@ -15,10 +15,6 @@ pub const PSR_TRANSFER_MSR_MASK: u32 = 0b0000_1101_1011_0000_1111_0000_0000_0000
 pub const PSR_TRANSFER_MSR_FORMAT: u32 = 0b0000_0001_0010_0000_1111_0000_0000_0000;
 
 impl Interpreter {
-    // TODO: R15 storage will store the current instruction plus 12. This is due to pipeling that
-    // is not implemented yet.
-    //
-    // TODO: Big endian is not implemented yet.
     pub fn single_data_transfer(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
         let operand_type = if opcode & (1 << 25) > 0 {
             OperandType::Register
@@ -33,6 +29,9 @@ impl Interpreter {
 
         let base_register_index = (opcode >> 16) & 0xF;
         let mut address = self.reg(base_register_index as usize);
+        if base_register_index == 15 {
+            address += 4;
+        }
 
         let pre_index = opcode & (1 << 24) > 0;
         let increment = opcode & (1 << 23) > 0;
@@ -66,10 +65,15 @@ impl Interpreter {
                 *self.reg_with_mode_mut(register_index as usize, mode) = data;
             }
         } else {
+            let mut source_register = self.reg(register_index as usize);
+            if register_index == 15 {
+                source_register += 8;
+            }
+
             if byte_write {
-                bus.write_byte(address, self.reg(register_index as usize) as u8)?;
+                bus.write_byte(address, source_register as u8)?;
             } else {
-                bus.write_dword(address, self.reg(register_index as usize))?;
+                bus.write_dword(address, source_register)?;
             }
         }
 
@@ -89,8 +93,8 @@ impl Interpreter {
             opcode,
             &format!(
                 "{}{}",
-                if load { "LDR" } else { "STR" },
-                if byte_write { "B" } else { "W" },
+                if load { "ldr" } else { "str" },
+                if byte_write { "b" } else { "w" },
             ),
             &format!(
                 "r{register_index}({:X}) := r{}, 0x{:X}",
@@ -172,11 +176,11 @@ impl Interpreter {
             opcode,
             &format!(
                 "{}{}{}",
-                if increment { "I" } else { "D" },
-                if load { "LDM" } else { "STM" },
-                if pre_index { "B" } else { "A" }
+                if load { "ldm" } else { "stm" },
+                if increment { "i" } else { "d" },
+                if pre_index { "b" } else { "a" }
             ),
-            &format!("r{}, 0x{:X}", base_register_index, opcode & 0xFFFF),
+            &format!("r{}, #0x{:X}", base_register_index, opcode & 0xFFFF),
         );
 
         Ok(1)
@@ -193,7 +197,7 @@ impl Interpreter {
 
         self.log_instruction(
             opcode,
-            "MRS",
+            "mrs",
             &format!(
                 "r{destination_register_index} := {}{:X}",
                 if use_spsr { "spsr" } else { "cpsr" },

@@ -50,40 +50,50 @@ impl Interpreter {
             OperandType::Register
         };
 
+        let source_register_index: usize = ((opcode >> 16) & 0xF) as usize;
+        let mut source = self.reg(source_register_index);
         let operand = match operand_type {
-            OperandType::Immediate => Self::shift_immediate(opcode),
-            OperandType::Register => self.shift_operand(opcode),
+            OperandType::Immediate => {
+                if source_register_index == 15 {
+                    source += 4;
+                }
+                Self::shift_immediate(opcode)
+            }
+            OperandType::Register => {
+                if source_register_index == 15 {
+                    source += if opcode & (1 << 4) > 0 { 8 } else { 4 };
+                }
+                self.shift_operand(opcode)
+            }
         };
 
-        let source_register_index: usize = ((opcode >> 16) & 0xF) as usize;
 
         let operation = DataProcessingOperation::try_from(((opcode >> 21) & 0xF) as u8).unwrap();
 
         let destination_register_index = (opcode >> 12) & 0xF;
-        let source = *self.reg_mut(source_register_index);
         let (result, overflow, mneumonic, description) = match operation {
             DataProcessingOperation::And => (
                 source & operand,
                 false,
-                "AND",
+                "and",
                 format!("r{source_register_index}({source:X}) & {operand:X}"),
             ),
             DataProcessingOperation::Test => (
                 source & operand,
                 false,
-                "TEST",
+                "test",
                 format!("r{source_register_index}({source:X}) & {operand:X}"),
             ),
             DataProcessingOperation::ExclusiveOr => (
                 source ^ operand,
                 false,
-                "EOR",
+                "eor",
                 format!("r{source_register_index}({source:X}) ^ {operand:X}"),
             ),
             DataProcessingOperation::TestEqual => (
                 source ^ operand,
                 false,
-                "TEQ",
+                "teq",
                 format!("r{source_register_index}({source:X}) ^ {operand:X}"),
             ),
             DataProcessingOperation::Subtract => {
@@ -91,7 +101,7 @@ impl Interpreter {
                 (
                     result,
                     overflow,
-                    "SUB",
+                    "sub",
                     format!("r{source_register_index}({source:X}) - {operand:X}"),
                 )
             }
@@ -100,7 +110,7 @@ impl Interpreter {
                 (
                     result,
                     overflow,
-                    "RSB",
+                    "rsb",
                     format!("{operand:X} - r{source_register_index}({source:X})"),
                 )
             }
@@ -109,7 +119,7 @@ impl Interpreter {
                 (
                     result,
                     overflow,
-                    "ADD",
+                    "add",
                     format!("r{source_register_index}({source:X}) + {operand:X}"),
                 )
             }
@@ -120,7 +130,7 @@ impl Interpreter {
                 (
                     result,
                     overflow,
-                    "ADC",
+                    "adc",
                     format!("r{source_register_index}({source:X}) + {operand:X} + C"),
                 )
             }
@@ -130,7 +140,7 @@ impl Interpreter {
                 (
                     result,
                     overflow,
-                    "SBC",
+                    "sbc",
                     format!("r{source_register_index}({source:X}) - {operand:X} + C - 1"),
                 )
             }
@@ -140,7 +150,7 @@ impl Interpreter {
                 (
                     result,
                     overflow,
-                    "RSC",
+                    "rsc",
                     format!("{operand:X} - r{source_register_index}({source:X}) + C - 1"),
                 )
             }
@@ -149,7 +159,7 @@ impl Interpreter {
                 (
                     result,
                     overflow,
-                    "CMP",
+                    "cmp",
                     format!("r{source_register_index}({source:X}) - {operand:X}"),
                 )
             }
@@ -158,25 +168,25 @@ impl Interpreter {
                 (
                     result,
                     overflow,
-                    "CMN",
+                    "cmn",
                     format!("r{source_register_index}({source:X}) + {operand:X}"),
                 )
             }
             DataProcessingOperation::Or => (
                 source | operand,
                 false,
-                "ORR",
+                "orr",
                 format!("r{source_register_index}({source:X}) | {operand:X}"),
             ),
-            DataProcessingOperation::Move => (operand, false, "MOV", format!("{operand:X}")),
+            DataProcessingOperation::Move => (operand, false, "mov", format!("{operand:X}")),
             DataProcessingOperation::AndNot => (
                 source & !operand,
                 false,
-                "BIC",
+                "bic",
                 format!("r{source_register_index}({source:X}) & !{operand:X}"),
             ),
             DataProcessingOperation::MoveNegate => {
-                (!operand, false, "MVN", format!("!{operand:X}"))
+                (!operand, false, "mvn", format!("!{operand:X}"))
             }
         };
 

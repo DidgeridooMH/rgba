@@ -16,7 +16,6 @@ use memory::{system_io::SystemIoFlags, wram::Wram};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreError {
-    AddressDecode(u8),
     OpcodeNotImplemented(u32),
     InvalidRegion(u32),
 }
@@ -26,9 +25,6 @@ impl fmt::Display for CoreError {
         match &self {
             CoreError::InvalidRegion(address) => {
                 write!(f, "Address access violation at 0x{:04X}", address)
-            }
-            CoreError::AddressDecode(opcode) => {
-                write!(f, "Unknown address mode from 0x{:02X}", opcode)
             }
             CoreError::OpcodeNotImplemented(opcode) => {
                 write!(f, "Opcode not implemented: 0x{0:08X}", opcode)

@@ -296,32 +296,32 @@ impl Interpreter {
     }
 
     pub fn log_instruction(&self, opcode: u32, mneumonic: &str, description: &str) {
+        let condition = Self::get_condition_label(opcode >> 28);
         println!(
-            "${:08X}: {:08X} {mneumonic}{} {description}",
+            "${:08X}: {opcode:08X} {mneumonic}{}{condition} {description}",
             self.pc() - 4,
-            opcode,
-            Self::get_condition_label(opcode >> 28)
+            if condition.len() > 0 { "." } else { "" },
         );
     }
 
     fn get_condition_label(condition_code: u32) -> &'static str {
         match condition_code {
-            0x0 => "EQ",
-            0x1 => "NE",
-            0x2 => "CS",
-            0x3 => "CC",
-            0x4 => "MI",
-            0x5 => "PL",
-            0x6 => "VS",
-            0x7 => "VC",
-            0x8 => "HI",
-            0x9 => "LS",
-            0xA => "GE",
-            0xB => "LT",
-            0xC => "GT",
-            0xD => "LE",
+            0x0 => "eq",
+            0x1 => "ne",
+            0x2 => "cs",
+            0x3 => "cc",
+            0x4 => "mi",
+            0x5 => "pl",
+            0x6 => "vs",
+            0x7 => "vc",
+            0x8 => "hi",
+            0x9 => "ls",
+            0xA => "ge",
+            0xB => "lt",
+            0xC => "gt",
+            0xD => "le",
             0xE => "",
-            0xF => "NV",
+            0xF => "nv",
             _ => unreachable!(),
         }
     }
@@ -329,6 +329,21 @@ impl Interpreter {
     fn check_condition(&self, condition: u32) -> bool {
         match condition {
             0x0 => self.cpsr.zero,
+            0x1 => !self.cpsr.zero,
+            0x2 => self.cpsr.carry,
+            0x3 => !self.cpsr.carry,
+            0x4 => self.cpsr.signed,
+            0x5 => !self.cpsr.signed,
+            0x6 => self.cpsr.overflow,
+            0x7 => !self.cpsr.overflow,
+            0x8 => self.cpsr.carry && !self.cpsr.zero,
+            0x9 => !self.cpsr.carry || self.cpsr.zero,
+            0xA => self.cpsr.signed == self.cpsr.overflow,
+            0xB => self.cpsr.signed != self.cpsr.overflow,
+            0xC => !self.cpsr.zero && self.cpsr.signed == self.cpsr.overflow,
+            0xD => self.cpsr.zero || self.cpsr.signed != self.cpsr.overflow,
+            0xE => true,
+            0xF => false,
             _ => true,
         }
     }

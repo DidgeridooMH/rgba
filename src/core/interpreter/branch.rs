@@ -23,15 +23,16 @@ impl Interpreter {
         let offset = ((opcode & 0x00FF_FFFF) << 10) as i32 >> 8;
         let new_pc = self.pc() as i32 + offset as i32 + 4;
 
-        let mneumonic = if opcode & (1 << 24) > 0 { "B" } else { "BL" };
+        let link = opcode & (1 << 24) > 0;
+        let mneumonic = if link { "bl" } else { "b" };
         self.log_instruction(
             opcode,
             mneumonic,
-            &format!("(0x{offset:X}) -> ${new_pc:08X}"),
+            &format!("{}0x{:X}", if offset < 0 { "-" } else { "" }, offset.abs()),
         );
 
         // Save the old PC address to the link register.
-        if opcode & (1 << 24) > 0 {
+        if link {
             *self.reg_mut(14) = self.pc();
         }
 
@@ -59,7 +60,7 @@ impl Interpreter {
             InstructionMode::Arm
         };
 
-        self.log_instruction(opcode, "BX", &format!("{target_register} -> ${new_pc:08X}"));
+        self.log_instruction(opcode, "bx", &format!("r{target_register}"));
 
         *self.pc_mut() = new_pc;
         self.cpsr.instruction_mode = new_mode;
