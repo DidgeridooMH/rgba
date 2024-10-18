@@ -3,18 +3,16 @@ mod branch;
 mod interrupt;
 mod shift;
 mod transfer;
+mod multiply;
 
 use transfer::{
     PSR_TRANSFER_MRS_FORMAT, PSR_TRANSFER_MRS_MASK, PSR_TRANSFER_MSR_FORMAT, PSR_TRANSFER_MSR_MASK,
 };
 
 use self::{
-    arithmetic::{DATA_PROCESSING_FORMAT, DATA_PROCESSING_MASK},
-    branch::{BRANCH_AND_EXCHANGE_FORMAT, BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK},
-    interrupt::{SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK},
-    transfer::{
+    arithmetic::{DATA_PROCESSING_FORMAT, DATA_PROCESSING_MASK}, branch::{BRANCH_AND_EXCHANGE_FORMAT, BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK}, interrupt::{SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK}, multiply::{MULTIPLY_FORMAT, MULTIPLY_LONG_FORMAT, MULTIPLY_MASK}, transfer::{
         BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, SINGLE_DATA_SWAP_FORMAT, SINGLE_DATA_SWAP_MASK, SINGLE_TRANSFER_FORMAT, SINGLE_TRANSFER_MASK
-    },
+    }
 };
 
 use super::{Bus, CoreError};
@@ -265,6 +263,13 @@ impl Interpreter {
 
     // TODO: Implement pipelining?
     pub fn tick(&mut self, bus: &mut Bus) -> Result<usize, CoreError> {
+        match self.cpsr.instruction_mode {
+            InstructionMode::Arm => self.tick_arm(bus),
+            InstructionMode::Thumb => unimplemented!(),
+        }
+    }
+
+    pub fn tick_arm(&mut self, bus: &mut Bus) -> Result<usize, CoreError> {
         let opcode = bus.read_dword(*self.pc_mut()).unwrap();
 
         *self.pc_mut() += 4;
@@ -286,6 +291,10 @@ impl Interpreter {
             Ok(self.single_data_transfer(opcode, bus)?)
         } else if (opcode & SINGLE_DATA_SWAP_MASK) == SINGLE_DATA_SWAP_FORMAT {
             Ok(self.single_data_swap(opcode, bus)?)
+        } else if (opcode & MULTIPLY_MASK) == MULTIPLY_FORMAT {
+            Ok(self.multiply(opcode))
+        } else if (opcode & MULTIPLY_MASK) == MULTIPLY_LONG_FORMAT {
+            Ok(self.multiply_long(opcode))
         } else if (opcode & PSR_TRANSFER_MRS_MASK) == PSR_TRANSFER_MRS_FORMAT {
             Ok(self.psr_transfer_mrs(opcode))
         } else if (opcode & PSR_TRANSFER_MSR_MASK) == PSR_TRANSFER_MSR_FORMAT {
