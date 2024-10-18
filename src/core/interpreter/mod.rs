@@ -13,7 +13,7 @@ use self::{
     branch::{BRANCH_AND_EXCHANGE_FORMAT, BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK},
     interrupt::{SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK},
     transfer::{
-        BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, SINGLE_TRANSFER_FORMAT, SINGLE_TRANSFER_MASK,
+        BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, SINGLE_DATA_SWAP_FORMAT, SINGLE_DATA_SWAP_MASK, SINGLE_TRANSFER_FORMAT, SINGLE_TRANSFER_MASK
     },
 };
 
@@ -284,6 +284,8 @@ impl Interpreter {
             Ok(self.software_interrupt(opcode))
         } else if (opcode & SINGLE_TRANSFER_MASK) == SINGLE_TRANSFER_FORMAT {
             Ok(self.single_data_transfer(opcode, bus)?)
+        } else if (opcode & SINGLE_DATA_SWAP_MASK) == SINGLE_DATA_SWAP_FORMAT {
+            Ok(self.single_data_swap(opcode, bus)?)
         } else if (opcode & PSR_TRANSFER_MRS_MASK) == PSR_TRANSFER_MRS_FORMAT {
             Ok(self.psr_transfer_mrs(opcode))
         } else if (opcode & PSR_TRANSFER_MSR_MASK) == PSR_TRANSFER_MSR_FORMAT {

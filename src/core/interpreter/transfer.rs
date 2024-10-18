@@ -14,6 +14,9 @@ pub const PSR_TRANSFER_MRS_FORMAT: u32 = 0b0000_0001_0000_1111_0000_0000_0000_00
 pub const PSR_TRANSFER_MSR_MASK: u32 = 0b0000_1101_1011_0000_1111_0000_0000_0000;
 pub const PSR_TRANSFER_MSR_FORMAT: u32 = 0b0000_0001_0010_0000_1111_0000_0000_0000;
 
+pub const SINGLE_DATA_SWAP_MASK: u32 = 0b0000_1111_1000_0000_0000_1111_1111_0000;
+pub const SINGLE_DATA_SWAP_FORMAT: u32 = 0b0000_0001_0000_0000_0000_0000_1001_0000;
+
 impl Interpreter {
     pub fn single_data_transfer(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
         let operand_type = if opcode & (1 << 25) > 0 {
@@ -257,5 +260,39 @@ impl Interpreter {
         );
 
         1
+    }
+
+    // TODO: Under the hood swp is implemented as a ldr and str instruction.
+    pub fn single_data_swap(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
+        let source_register_index = opcode & 0xF;
+        let destination_register_index = (opcode >> 12) & 0xF;
+        let base_register_index = (opcode >> 16) & 0xF;
+
+        let address = self.reg(base_register_index as usize);
+
+        let data = bus.read_dword(address)?;
+        let source_register = self.reg(source_register_index as usize);
+
+        let byte_transfer = opcode & (1 << 22) > 0;
+        if byte_transfer {
+            bus.write_byte(address, source_register as u8)?;
+            *self.reg_mut(destination_register_index as usize) = data & 0xFF;
+        } else {
+            bus.write_dword(address, source_register)?;
+            *self.reg_mut(destination_register_index as usize) = data;
+        }
+
+        self.log_instruction(
+            opcode,
+            if byte_transfer { "swpb" } else { "swp" },
+            &format!(
+                "r{destination_register_index}, r{source_register_index}, [r{base_register_index}]",
+                destination_register_index = destination_register_index,
+                base_register_index = base_register_index,
+                source_register_index = source_register_index
+            ),
+        );
+
+        Ok(1)
     }
 }
