@@ -1,4 +1,10 @@
-use super::{Interpreter, OperandType};
+use crate::core::{Bus, CoreError};
+
+use super::{
+    instruction::{InstructionExecutor, Operand},
+    register::RegisterBank,
+    shift::{rotated_immediate, Shift},
+};
 use num_enum::TryFromPrimitive;
 use std::convert::TryFrom;
 
@@ -42,177 +48,151 @@ enum DataProcessingOperation {
     MoveNegate = 15,
 }
 
-impl Interpreter {
-    pub fn process_data(&mut self, opcode: u32) -> usize {
-        let operand_type = if opcode & (1 << 25) > 0 {
-            OperandType::Immediate
+pub struct DataProcessingInstruction {
+    update_conditions: bool,
+    source_register_index: u32,
+    operand: Operand,
+    destination_register_index: Option<u32>,
+    operation: DataProcessingOperation,
+}
+
+impl DataProcessingInstruction {
+    pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
+        let operand = if opcode & (1 << 25) > 0 {
+            Operand::Immediate(rotated_immediate(opcode))
         } else {
-            OperandType::Register
-        };
-
-        let source_register_index: usize = ((opcode >> 16) & 0xF) as usize;
-        let mut source = self.reg(source_register_index);
-        let operand = match operand_type {
-            OperandType::Immediate => {
-                if source_register_index == 15 {
-                    source += 4;
-                }
-                Self::shift_immediate(opcode)
-            }
-            OperandType::Register => {
-                if source_register_index == 15 {
-                    source += if opcode & (1 << 4) > 0 { 8 } else { 4 };
-                }
-                self.shift_operand(opcode)
+            match Shift::from_opcode(opcode) {
+                Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
+                Shift::Register(shift) => Operand::RegisterShifted(shift),
             }
         };
 
-
+        let source_register_index = (opcode >> 16) & 0xF;
         let operation = DataProcessingOperation::try_from(((opcode >> 21) & 0xF) as u8).unwrap();
-
-        let destination_register_index = (opcode >> 12) & 0xF;
-        let (result, overflow, mneumonic, description) = match operation {
-            DataProcessingOperation::And => (
-                source & operand,
-                false,
-                "and",
-                format!("r{source_register_index}({source:X}) & {operand:X}"),
-            ),
-            DataProcessingOperation::Test => (
-                source & operand,
-                false,
-                "test",
-                format!("r{source_register_index}({source:X}) & {operand:X}"),
-            ),
-            DataProcessingOperation::ExclusiveOr => (
-                source ^ operand,
-                false,
-                "eor",
-                format!("r{source_register_index}({source:X}) ^ {operand:X}"),
-            ),
-            DataProcessingOperation::TestEqual => (
-                source ^ operand,
-                false,
-                "teq",
-                format!("r{source_register_index}({source:X}) ^ {operand:X}"),
-            ),
-            DataProcessingOperation::Subtract => {
-                let (result, overflow) = source.overflowing_sub(operand);
-                (
-                    result,
-                    overflow,
-                    "sub",
-                    format!("r{source_register_index}({source:X}) - {operand:X}"),
-                )
-            }
-            DataProcessingOperation::ReverseSubtract => {
-                let (result, overflow) = operand.overflowing_sub(source);
-                (
-                    result,
-                    overflow,
-                    "rsb",
-                    format!("{operand:X} - r{source_register_index}({source:X})"),
-                )
-            }
-            DataProcessingOperation::Add => {
-                let (result, overflow) = source.overflowing_add(operand);
-                (
-                    result,
-                    overflow,
-                    "add",
-                    format!("r{source_register_index}({source:X}) + {operand:X}"),
-                )
-            }
-            DataProcessingOperation::AddWithCarry => {
-                // TODO: Check if this needs to account for a double carry.
-                let (result, _) = source.overflowing_add(operand);
-                let (result, overflow) = result.overflowing_add(self.cpsr.carry as u32);
-                (
-                    result,
-                    overflow,
-                    "adc",
-                    format!("r{source_register_index}({source:X}) + {operand:X} + C"),
-                )
-            }
-            DataProcessingOperation::SubtractWithCarry => {
-                let (result, _) = source.overflowing_sub(operand);
-                let (result, overflow) = result.overflowing_add(self.cpsr.carry as u32 - 1);
-                (
-                    result,
-                    overflow,
-                    "sbc",
-                    format!("r{source_register_index}({source:X}) - {operand:X} + C - 1"),
-                )
-            }
-            DataProcessingOperation::ReverseSubtractWithCarry => {
-                let (result, _) = operand.overflowing_sub(source);
-                let (result, overflow) = result.overflowing_add(self.cpsr.carry as u32 - 1);
-                (
-                    result,
-                    overflow,
-                    "rsc",
-                    format!("{operand:X} - r{source_register_index}({source:X}) + C - 1"),
-                )
-            }
-            DataProcessingOperation::Compare => {
-                let (result, overflow) = source.overflowing_sub(operand);
-                (
-                    result,
-                    overflow,
-                    "cmp",
-                    format!("r{source_register_index}({source:X}) - {operand:X}"),
-                )
-            }
-            DataProcessingOperation::CompareNegate => {
-                let (result, overflow) = source.overflowing_add(operand);
-                (
-                    result,
-                    overflow,
-                    "cmn",
-                    format!("r{source_register_index}({source:X}) + {operand:X}"),
-                )
-            }
-            DataProcessingOperation::Or => (
-                source | operand,
-                false,
-                "orr",
-                format!("r{source_register_index}({source:X}) | {operand:X}"),
-            ),
-            DataProcessingOperation::Move => (operand, false, "mov", format!("{operand:X}")),
-            DataProcessingOperation::AndNot => (
-                source & !operand,
-                false,
-                "bic",
-                format!("r{source_register_index}({source:X}) & !{operand:X}"),
-            ),
-            DataProcessingOperation::MoveNegate => {
-                (!operand, false, "mvn", format!("!{operand:X}"))
-            }
-        };
-
-        self.log_instruction(
-            opcode,
-            mneumonic,
-            &format!("r{destination_register_index}({result:X}) := {description}",),
-        );
-
-        if operation != DataProcessingOperation::Test
+        let destination_register_index = if operation != DataProcessingOperation::Test
             && operation != DataProcessingOperation::TestEqual
             && operation != DataProcessingOperation::Compare
             && operation != DataProcessingOperation::CompareNegate
         {
-            *self.reg_mut(destination_register_index as usize) = result;
+            Some((opcode >> 12) & 0xF)
+        } else {
+            None
+        };
+
+        Self {
+            update_conditions: opcode & (1 << 20) > 0,
+            source_register_index,
+            operand,
+            operation,
+            destination_register_index,
+        }
+    }
+}
+
+impl InstructionExecutor for DataProcessingInstruction {
+    fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
+        let source = registers.reg(self.source_register_index as usize);
+        let operand = match &self.operand {
+            Operand::Immediate(value) => *value,
+            Operand::RegisterShifted(shift) => shift.shift(registers),
+        };
+        let (result, overflow) = match self.operation {
+            DataProcessingOperation::And => (source & operand, false),
+            DataProcessingOperation::Test => (source & operand, false),
+            DataProcessingOperation::ExclusiveOr => (source ^ operand, false),
+            DataProcessingOperation::TestEqual => (source ^ operand, false),
+            DataProcessingOperation::Subtract => {
+                let (result, overflow) = source.overflowing_sub(operand);
+                (result, overflow)
+            }
+            DataProcessingOperation::ReverseSubtract => {
+                let (result, overflow) = operand.overflowing_sub(source);
+                (result, overflow)
+            }
+            DataProcessingOperation::Add => {
+                let (result, overflow) = source.overflowing_add(operand);
+                (result, overflow)
+            }
+            DataProcessingOperation::AddWithCarry => {
+                // TODO: Check if this needs to account for a double carry.
+                let (result, _) = source.overflowing_add(operand);
+                let (result, overflow) = result.overflowing_add(registers.cpsr.carry as u32);
+                (result, overflow)
+            }
+            DataProcessingOperation::SubtractWithCarry => {
+                let (result, _) = source.overflowing_sub(operand);
+                let (result, overflow) = result.overflowing_add(registers.cpsr.carry as u32 - 1);
+                (result, overflow)
+            }
+            DataProcessingOperation::ReverseSubtractWithCarry => {
+                let (result, _) = operand.overflowing_sub(source);
+                let (result, overflow) = result.overflowing_add(registers.cpsr.carry as u32 - 1);
+                (result, overflow)
+            }
+            DataProcessingOperation::Compare => {
+                let (result, overflow) = source.overflowing_sub(operand);
+                (result, overflow)
+            }
+            DataProcessingOperation::CompareNegate => {
+                let (result, overflow) = source.overflowing_add(operand);
+                (result, overflow)
+            }
+            DataProcessingOperation::Or => (source | operand, false),
+            DataProcessingOperation::Move => (operand, false),
+            DataProcessingOperation::AndNot => (source & !operand, false),
+            DataProcessingOperation::MoveNegate => (!operand, false),
+        };
+
+        if let Some(destination_register_index) = self.destination_register_index {
+            *registers.reg_mut(destination_register_index as usize) = result;
         }
 
         // Check if condition code should be updated.
-        if opcode & (1 << 20) > 0 {
-            self.cpsr.overflow = overflow;
-            self.cpsr.carry = source >= operand;
-            self.cpsr.zero = result == 0;
-            self.cpsr.signed = result & (1 << 31) > 0;
+        if self.update_conditions {
+            registers.cpsr.overflow = overflow;
+            registers.cpsr.carry = source >= operand;
+            registers.cpsr.zero = result == 0;
+            registers.cpsr.signed = result & (1 << 31) > 0;
         }
 
         // TODO: Calculate cycle timings.
-        1
+        Ok(1)
+    }
+
+    fn mneumonic(&self) -> String {
+        let mneumonic = match self.operation {
+            DataProcessingOperation::And => "and",
+            DataProcessingOperation::Test => "tst",
+            DataProcessingOperation::ExclusiveOr => "eor",
+            DataProcessingOperation::TestEqual => "teq",
+            DataProcessingOperation::Subtract => "sub",
+            DataProcessingOperation::ReverseSubtract => "rsb",
+            DataProcessingOperation::Add => "add",
+            DataProcessingOperation::AddWithCarry => "adc",
+            DataProcessingOperation::SubtractWithCarry => "sbc",
+            DataProcessingOperation::ReverseSubtractWithCarry => "rsc",
+            DataProcessingOperation::Compare => "cmp",
+            DataProcessingOperation::CompareNegate => "cmn",
+            DataProcessingOperation::Or => "orr",
+            DataProcessingOperation::Move => "mov",
+            DataProcessingOperation::AndNot => "bic",
+            DataProcessingOperation::MoveNegate => "mvn",
+        };
+        format!(
+            "{mneumonic}{}",
+            if self.update_conditions { "s" } else { "" }
+        )
+        .into()
+    }
+
+    fn description(&self) -> String {
+        if let Some(destination_register_index) = self.destination_register_index {
+            format!(
+                "r{destination_register_index}, r{}, {}",
+                self.source_register_index, self.operand
+            )
+        } else {
+            format!("r{}, {}", self.source_register_index, self.operand)
+        }
     }
 }

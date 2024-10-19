@@ -58,7 +58,7 @@ impl Gba {
         );
 
         Ok(Self {
-            cpu: Interpreter::new(),
+            cpu: Interpreter::default(),
             bus,
         })
     }

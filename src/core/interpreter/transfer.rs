@@ -1,6 +1,10 @@
 use crate::core::{Bus, CoreError};
 
-use super::{CpuMode, Interpreter, OperandType, ProgramStatusRegister};
+use super::{
+    instruction::{InstructionExecutor, Operand},
+    shift::Shift,
+    status::CpuMode,
+};
 
 pub const SINGLE_TRANSFER_MASK: u32 = 0b0000_1100_0000_0000_0000_0000_0000_0000;
 pub const SINGLE_TRANSFER_FORMAT: u32 = 0b0000_0100_0000_0000_0000_0000_0000_0000;
@@ -17,99 +21,127 @@ pub const PSR_TRANSFER_MSR_FORMAT: u32 = 0b0000_0001_0010_0000_1111_0000_0000_00
 pub const SINGLE_DATA_SWAP_MASK: u32 = 0b0000_1111_1000_0000_0000_1111_1111_0000;
 pub const SINGLE_DATA_SWAP_FORMAT: u32 = 0b0000_0001_0000_0000_0000_0000_1001_0000;
 
-impl Interpreter {
-    pub fn single_data_transfer(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
-        let operand_type = if opcode & (1 << 25) > 0 {
-            OperandType::Register
+pub struct SingleDataTransferInstruction {
+    source_register_index: u32,
+    base_register_index: u32,
+    offset: Operand,
+    load: bool,
+    write_back: bool,
+    byte_transfer: bool,
+    up: bool,
+    pre_index: bool,
+}
+
+impl SingleDataTransferInstruction {
+    pub fn decode(registers: &mut super::register::RegisterBank, opcode: u32) -> Self {
+        let offset = if opcode & (1 << 25) > 0 {
+            match Shift::from_opcode(opcode) {
+                Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
+                Shift::Register(shift) => Operand::RegisterShifted(shift),
+            }
         } else {
-            OperandType::Immediate
+            Operand::Immediate(opcode & 0xFFF)
         };
 
-        let operand = match operand_type {
-            OperandType::Immediate => opcode & 0xFFF,
-            OperandType::Register => self.shift_operand(opcode),
-        };
-
-        let base_register_index = (opcode >> 16) & 0xF;
-        let mut address = self.reg(base_register_index as usize);
-        if base_register_index == 15 {
-            address += 4;
+        Self {
+            offset,
+            source_register_index: (opcode >> 12) & 0xF,
+            base_register_index: (opcode >> 16) & 0xF,
+            load: opcode & (1 << 20) > 0,
+            write_back: opcode & (1 << 21) > 0,
+            byte_transfer: opcode & (1 << 22) > 0,
+            up: opcode & (1 << 23) > 0,
+            pre_index: opcode & (1 << 24) > 0,
         }
+    }
+}
 
-        let pre_index = opcode & (1 << 24) > 0;
-        let increment = opcode & (1 << 23) > 0;
-        if pre_index {
-            if increment {
-                address += operand;
+impl InstructionExecutor for SingleDataTransferInstruction {
+    fn execute(
+        &self,
+        registers: &mut super::register::RegisterBank,
+        bus: &mut Bus,
+    ) -> Result<usize, CoreError> {
+        let offset = match &self.offset {
+            Operand::Immediate(value) => *value,
+            Operand::RegisterShifted(shift) => shift.shift(registers),
+        };
+
+        let mut address = registers.reg(self.base_register_index as usize);
+        if self.pre_index {
+            if self.up {
+                address += offset;
             } else {
-                address -= operand;
+                address -= offset;
             }
         }
 
-        let load = opcode & (1 << 20) > 0;
-        let byte_write = opcode & (1 << 22) > 0;
-        let register_index = (opcode >> 12) & 0xF;
-
-        let write_back = opcode & (1 << 21) > 0;
-        let mode = if !pre_index && write_back {
+        let mode = if !self.pre_index && self.write_back {
             CpuMode::User
         } else {
-            self.cpsr.mode
+            registers.cpsr.mode
         };
-        if load {
-            if byte_write {
-                *self.reg_with_mode_mut(register_index as usize, mode) =
-                    bus.read_byte(address)? as u32;
+        if self.load {
+            let data = if self.byte_transfer {
+                bus.read_byte(address)? as u32
             } else {
-                let mut data = bus.read_dword(address)?;
-                if address % 4 == 2 {
-                    data = data.rotate_left(16);
-                }
-                *self.reg_with_mode_mut(register_index as usize, mode) = data;
-            }
+                bus.read_dword(address)?
+            };
+            *registers.reg_with_mode_mut(self.source_register_index as usize, mode) =
+                if self.byte_transfer {
+                    data & 0xFF
+                } else if address % 4 == 2 {
+                    data.rotate_left(16)
+                } else {
+                    data
+                };
         } else {
-            let mut source_register = self.reg(register_index as usize);
-            if register_index == 15 {
-                source_register += 8;
+            let mut source_register =
+                registers.reg_with_mode(self.source_register_index as usize, mode);
+            if self.source_register_index == 15 {
+                source_register -= 4;
             }
 
-            if byte_write {
+            if self.byte_transfer {
                 bus.write_byte(address, source_register as u8)?;
             } else {
                 bus.write_dword(address, source_register)?;
             }
         }
 
-        if !pre_index {
-            if increment {
-                address += operand;
+        if !self.pre_index {
+            if self.up {
+                address += offset;
             } else {
-                address -= operand;
+                address -= offset;
             }
         }
 
-        if write_back || !pre_index {
-            *self.reg_mut(base_register_index as usize) = address;
+        if self.write_back || !self.pre_index {
+            *registers.reg_mut(self.base_register_index as usize) = address;
         }
-
-        self.log_instruction(
-            opcode,
-            &format!(
-                "{}{}",
-                if load { "ldr" } else { "str" },
-                if byte_write { "b" } else { "w" },
-            ),
-            &format!(
-                "r{register_index}({:X}) := r{}, 0x{:X}",
-                self.reg(register_index as usize),
-                base_register_index,
-                operand
-            ),
-        );
 
         Ok(1)
     }
 
+    fn mneumonic(&self) -> String {
+        format!(
+            "{}{}{}",
+            if self.load { "ldr" } else { "str" },
+            if self.byte_transfer { "b" } else { "" },
+            if self.write_back { "t" } else { "" },
+        )
+    }
+
+    fn description(&self) -> String {
+        format!(
+            "r{}, [r{}], {}",
+            self.source_register_index, self.base_register_index, self.offset
+        )
+    }
+}
+
+/*impl Interpreter {
     pub fn block_data_transfer(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
         let pre_index = opcode & (1 << 24) > 0;
         let increment = opcode & (1 << 23) > 0;
@@ -295,4 +327,4 @@ impl Interpreter {
 
         Ok(1)
     }
-}
+}*/

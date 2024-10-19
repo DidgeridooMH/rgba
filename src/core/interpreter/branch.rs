@@ -1,4 +1,9 @@
-use super::{InstructionMode, Interpreter};
+use crate::core::{Bus, CoreError};
+
+use super::disasm::print_offset_as_immediate;
+use super::instruction::InstructionExecutor;
+use super::register::RegisterBank;
+use super::status::InstructionMode;
 
 pub const BRANCH_MASK: u32 = 0b0000_1110_0000_0000_0000_0000_0000_0000;
 pub const BRANCH_FORMAT: u32 = 0b0000_1010_0000_0000_0000_0000_0000_0000;
@@ -8,63 +13,76 @@ pub const BRANCH_AND_EXCHANGE_FORMAT: u32 = 0b0000_0001_0010_1111_1111_1111_0001
 
 const BRANCH_CYCLE_COUNT: usize = 3;
 
-impl Interpreter {
-    /// Branches to a new address potentially linking the old address to register 14.
-    ///
-    /// # Arguments
-    ///
-    /// * `opcode` - The opcode to interpret.
-    ///
-    /// # Returns
-    ///
-    /// The number of cycles taken to execute the instruction.
-    pub fn branch(&mut self, opcode: u32) -> usize {
-        // Offsets are in groups of 4s and signed extended 24 bit.
-        let offset = ((opcode & 0x00FF_FFFF) << 10) as i32 >> 8;
-        let new_pc = self.pc() as i32 + offset as i32 + 4;
+pub struct BranchInstruction {
+    link: bool,
+    offset: i32,
+}
 
-        let link = opcode & (1 << 24) > 0;
-        let mneumonic = if link { "bl" } else { "b" };
-        self.log_instruction(
-            opcode,
-            mneumonic,
-            &format!("{}0x{:X}", if offset < 0 { "-" } else { "" }, offset.abs()),
-        );
-
-        // Save the old PC address to the link register.
-        if link {
-            *self.reg_mut(14) = self.pc();
+impl BranchInstruction {
+    pub fn decode(_registers: &mut RegisterBank, opcode: u32) -> Self {
+        Self {
+            link: opcode & (1 << 24) > 0,
+            offset: ((opcode & 0x00FF_FFFF) << 10) as i32 >> 8,
         }
+    }
+}
 
-        *self.pc_mut() = new_pc as u32;
-        BRANCH_CYCLE_COUNT
+impl InstructionExecutor for BranchInstruction {
+    fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
+        if self.link {
+            *registers.reg_mut(14) = registers.pc();
+        }
+        *registers.pc_mut() = (registers.pc() as i32 + self.offset as i32) as u32;
+        Ok(BRANCH_CYCLE_COUNT)
     }
 
-    /// Branches to a new address and switches the instruction mode.
-    ///
-    /// # Arguments
-    ///
-    /// * `opcode` - The opcode to interpret.
-    ///
-    /// # Returns
-    ///
-    /// The number of cycles taken to execute the instruction.
-    pub fn branch_and_exchange(&mut self, opcode: u32) -> usize {
+    fn mneumonic(&self) -> String {
+        if self.link { "bl" } else { "b" }.into()
+    }
+
+    fn description(&self) -> String {
+        print_offset_as_immediate(self.offset)
+    }
+}
+
+pub struct BranchAndExchangeInstruction {
+    pub address: u32,
+    pub mode: InstructionMode,
+}
+
+impl BranchAndExchangeInstruction {
+    pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
         let target_register = (opcode & 0xF) as usize;
-        let target_address = self.reg(target_register);
+        let target_address = registers.reg(target_register);
 
-        let new_pc = target_address & !1;
-        let new_mode = if target_address & 1 > 0 {
-            InstructionMode::Thumb
-        } else {
-            InstructionMode::Arm
-        };
+        Self {
+            address: target_address & !1,
+            mode: if target_address & 1 > 0 {
+                InstructionMode::Thumb
+            } else {
+                InstructionMode::Arm
+            },
+        }
+    }
+}
 
-        self.log_instruction(opcode, "bx", &format!("r{target_register}"));
+impl InstructionExecutor for BranchAndExchangeInstruction {
+    fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
+        *registers.pc_mut() = self.address;
+        registers.cpsr.instruction_mode = self.mode;
 
-        *self.pc_mut() = new_pc;
-        self.cpsr.instruction_mode = new_mode;
+        Ok(BRANCH_CYCLE_COUNT)
+    }
 
-        BRANCH_CYCLE_COUNT
+    fn mneumonic(&self) -> String {
+        match self.mode {
+            InstructionMode::Arm => "bx",
+            InstructionMode::Thumb => "bxt",
+        }
+        .into()
+    }
+
+    fn description(&self) -> String {
+        format!("${:08X}", self.address)
     }
 }
