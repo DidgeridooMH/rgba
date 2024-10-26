@@ -1,18 +1,42 @@
-use super::{CpuMode, Interpreter};
+use crate::core::{Bus, CoreError};
+
+use super::{
+    disasm::print_offset_as_immediate, instruction::InstructionExecutor, register::RegisterBank,
+};
 
 pub const SOFTWARE_INTERRUPT_MASK: u32 = 0b0000_1111_0000_0000_0000_0000_0000_0000;
 pub const SOFTWARE_INTERRUPT_FORMAT: u32 = 0b0000_1111_0000_0000_0000_0000_0000_0000;
 
 const SOFTWARE_INTERRUPT_PC_OFFSET: u32 = 8;
 
-impl Interpreter {
-    pub fn software_interrupt(&mut self, opcode: u32) -> usize {
-        *self.reg_with_mode_mut(14, CpuMode::Supervisor) = self.pc();
-        *self.pc_mut() = SOFTWARE_INTERRUPT_PC_OFFSET;
-        *self.spsr_with_mode_mut(CpuMode::Supervisor) = self.cpsr;
+pub struct SoftwareInterruptInstruction {
+    past_address: u32,
+    comment: u32,
+}
 
-        self.log_instruction(opcode, "SWI", &format!("0x{:X}", opcode & 0x00FFFFFF));
+impl SoftwareInterruptInstruction {
+    pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
+        Self {
+            past_address: registers.pc(),
+            comment: opcode & 0x00FF_FFFF,
+        }
+    }
+}
 
-        1
+impl InstructionExecutor for SoftwareInterruptInstruction {
+    fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
+        *registers.reg_mut(14) = self.past_address;
+        *registers.pc_mut() = SOFTWARE_INTERRUPT_PC_OFFSET;
+        *registers.spsr_mut() = registers.cpsr;
+
+        Ok(1)
+    }
+
+    fn mnemonic(&self) -> String {
+        "swi".into()
+    }
+
+    fn description(&self) -> String {
+        print_offset_as_immediate(self.comment as i32)
     }
 }

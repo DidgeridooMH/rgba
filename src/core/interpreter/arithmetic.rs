@@ -159,8 +159,8 @@ impl InstructionExecutor for DataProcessingInstruction {
         Ok(1)
     }
 
-    fn mneumonic(&self) -> String {
-        let mneumonic = match self.operation {
+    fn mnemonic(&self) -> String {
+        let mnemonic = match self.operation {
             DataProcessingOperation::And => "and",
             DataProcessingOperation::Test => "tst",
             DataProcessingOperation::ExclusiveOr => "eor",
@@ -179,7 +179,7 @@ impl InstructionExecutor for DataProcessingInstruction {
             DataProcessingOperation::MoveNegate => "mvn",
         };
         format!(
-            "{mneumonic}{}",
+            "{mnemonic}{}",
             if self.update_conditions { "s" } else { "" }
         )
         .into()

@@ -5,14 +5,18 @@ use crate::core::{Bus, CoreError};
 use super::{
     arithmetic::DataProcessingInstruction,
     branch::{BranchAndExchangeInstruction, BranchInstruction},
+    interrupt::SoftwareInterruptInstruction,
     register::RegisterBank,
     shift::RegisterShift,
-    transfer::SingleDataTransferInstruction,
+    transfer::{
+        BlockDataTransferInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction,
+        SingleDataSwapInstruction, SingleDataTransferInstruction,
+    },
 };
 
 pub trait InstructionExecutor {
     fn execute(&self, registers: &mut RegisterBank, bus: &mut Bus) -> Result<usize, CoreError>;
-    fn mneumonic(&self) -> String;
+    fn mnemonic(&self) -> String;
     fn description(&self) -> String;
 }
 
@@ -21,6 +25,11 @@ pub enum Instruction {
     BranchAndExchange(BranchAndExchangeInstruction),
     DataProcessing(DataProcessingInstruction),
     SingleDataTransfer(SingleDataTransferInstruction),
+    SoftwareInterrupt(SoftwareInterruptInstruction),
+    BlockDataTransfer(BlockDataTransferInstruction),
+    PsrTransferMrs(PsrTransferMrsInstruction),
+    PsrTransferMsr(PsrTransferMsrInstruction),
+    SingleDataSwap(SingleDataSwapInstruction),
 }
 
 pub struct Operation {

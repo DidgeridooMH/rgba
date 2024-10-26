@@ -36,7 +36,7 @@ impl InstructionExecutor for BranchInstruction {
         Ok(BRANCH_CYCLE_COUNT)
     }
 
-    fn mneumonic(&self) -> String {
+    fn mnemonic(&self) -> String {
         if self.link { "bl" } else { "b" }.into()
     }
 
@@ -74,7 +74,7 @@ impl InstructionExecutor for BranchAndExchangeInstruction {
         Ok(BRANCH_CYCLE_COUNT)
     }
 
-    fn mneumonic(&self) -> String {
+    fn mnemonic(&self) -> String {
         match self.mode {
             InstructionMode::Arm => "bx",
             InstructionMode::Thumb => "bxt",

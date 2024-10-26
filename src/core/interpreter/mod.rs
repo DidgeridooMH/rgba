@@ -2,12 +2,18 @@ mod arithmetic;
 mod branch;
 mod disasm;
 mod instruction;
-//mod interrupt;
-//mod multiply;
+mod interrupt;
+mod multiply;
 mod register;
 mod shift;
 mod status;
 mod transfer;
+
+use interrupt::{SoftwareInterruptInstruction, SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK};
+use multiply::{MULTIPLY_FORMAT, MULTIPLY_LONG_FORMAT, MULTIPLY_MASK};
+use transfer::{
+    BlockDataTransferInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction, SingleDataSwapInstruction, BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, PSR_TRANSFER_MRS_FORMAT, PSR_TRANSFER_MRS_MASK, PSR_TRANSFER_MSR_FORMAT, PSR_TRANSFER_MSR_MASK, SINGLE_DATA_SWAP_FORMAT, SINGLE_DATA_SWAP_MASK
+};
 
 use self::{
     arithmetic::{DataProcessingInstruction, DATA_PROCESSING_FORMAT, DATA_PROCESSING_MASK},
@@ -58,13 +64,42 @@ impl Interpreter {
                         &mut self.registers,
                         fetched_instruction,
                     ))
+                } else if (fetched_instruction & BLOCK_TRANSFER_MASK) == BLOCK_TRANSFER_FORMAT {
+                    Instruction::BlockDataTransfer(BlockDataTransferInstruction::decode(
+                        &mut self.registers,
+                        fetched_instruction,
+                    ))
                 } else if (fetched_instruction & BRANCH_MASK) == BRANCH_FORMAT {
                     Instruction::Branch(BranchInstruction::decode(
                         &mut self.registers,
                         fetched_instruction,
                     ))
+                } else if (fetched_instruction & SOFTWARE_INTERRUPT_MASK)
+                    == SOFTWARE_INTERRUPT_FORMAT
+                {
+                    Instruction::SoftwareInterrupt(SoftwareInterruptInstruction::decode(
+                        &mut self.registers,
+                        fetched_instruction,
+                    ))
                 } else if (fetched_instruction & SINGLE_TRANSFER_MASK) == SINGLE_TRANSFER_FORMAT {
                     Instruction::SingleDataTransfer(SingleDataTransferInstruction::decode(
+                        &mut self.registers,
+                        fetched_instruction,
+                    ))
+                } else if (fetched_instruction & SINGLE_DATA_SWAP_MASK) == SINGLE_DATA_SWAP_FORMAT {
+                    Instruction::SingleDataSwap(SingleDataSwapInstruction::decode(
+                        fetched_instruction,
+                    ))
+                } else if (fetched_instruction & MULTIPLY_MASK) == MULTIPLY_FORMAT {
+                    unimplemented!()
+                } else if (fetched_instruction & MULTIPLY_MASK) == MULTIPLY_LONG_FORMAT {
+                    unimplemented!()
+                } else if (fetched_instruction & PSR_TRANSFER_MRS_MASK) == PSR_TRANSFER_MRS_FORMAT {
+                    Instruction::PsrTransferMrs(PsrTransferMrsInstruction::decode(
+                        fetched_instruction,
+                    ))
+                } else if (fetched_instruction & PSR_TRANSFER_MSR_MASK) == PSR_TRANSFER_MSR_FORMAT {
+                    Instruction::PsrTransferMsr(PsrTransferMsrInstruction::decode(
                         &mut self.registers,
                         fetched_instruction,
                     ))
@@ -95,12 +130,17 @@ impl Interpreter {
                 Instruction::BranchAndExchange(b) => b,
                 Instruction::DataProcessing(d) => d,
                 Instruction::SingleDataTransfer(d) => d,
+                Instruction::SoftwareInterrupt(i) => i,
+                Instruction::BlockDataTransfer(d) => d,
+                Instruction::PsrTransferMrs(d) => d,
+                Instruction::PsrTransferMsr(d) => d,
+                Instruction::SingleDataSwap(d) => d,
             };
 
             self.log_instruction(
                 decoded_instruction.location,
                 decoded_instruction.opcode,
-                &ins.mneumonic(),
+                &ins.mnemonic(),
                 &ins.description(),
             );
 
@@ -114,31 +154,7 @@ impl Interpreter {
                 return cycles;
             }
         }
-        /*if (opcode & BRANCH_AND_EXCHANGE_MASK) == BRANCH_AND_EXCHANGE_FORMAT {
-            Ok(self.branch_and_exchange(opcode))
-        } else if (opcode & BLOCK_TRANSFER_MASK) == BLOCK_TRANSFER_FORMAT {
-            Ok(self.block_data_transfer(opcode, bus)?)
-        } else if (opcode & BRANCH_MASK) == BRANCH_FORMAT {
-            Ok(self.branch(opcode))
-        } else if (opcode & SOFTWARE_INTERRUPT_MASK) == SOFTWARE_INTERRUPT_FORMAT {
-            Ok(self.software_interrupt(opcode))
-        } else if (opcode & SINGLE_TRANSFER_MASK) == SINGLE_TRANSFER_FORMAT {
-            Ok(self.single_data_transfer(opcode, bus)?)
-        } else if (opcode & SINGLE_DATA_SWAP_MASK) == SINGLE_DATA_SWAP_FORMAT {
-            Ok(self.single_data_swap(opcode, bus)?)
-        } else if (opcode & MULTIPLY_MASK) == MULTIPLY_FORMAT {
-            Ok(self.multiply(opcode))
-        } else if (opcode & MULTIPLY_MASK) == MULTIPLY_LONG_FORMAT {
-            Ok(self.multiply_long(opcode))
-        } else if (opcode & PSR_TRANSFER_MRS_MASK) == PSR_TRANSFER_MRS_FORMAT {
-            Ok(self.psr_transfer_mrs(opcode))
-        } else if (opcode & PSR_TRANSFER_MSR_MASK) == PSR_TRANSFER_MSR_FORMAT {
-            Ok(self.psr_transfer_msr(opcode))
-        } else if (opcode & DATA_PROCESSING_MASK) == DATA_PROCESSING_FORMAT {
-            Ok(self.process_data(opcode))
-        } else {
-            Err(CoreError::OpcodeNotImplemented(opcode))
-        }*/
+
         Ok(1)
     }
 

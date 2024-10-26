@@ -2,6 +2,7 @@ use crate::core::{Bus, CoreError};
 
 use super::{
     instruction::{InstructionExecutor, Operand},
+    register::RegisterBank,
     shift::Shift,
     status::CpuMode,
 };
@@ -124,7 +125,7 @@ impl InstructionExecutor for SingleDataTransferInstruction {
         Ok(1)
     }
 
-    fn mneumonic(&self) -> String {
+    fn mnemonic(&self) -> String {
         format!(
             "{}{}{}",
             if self.load { "ldr" } else { "str" },
@@ -141,190 +142,293 @@ impl InstructionExecutor for SingleDataTransferInstruction {
     }
 }
 
-/*impl Interpreter {
-    pub fn block_data_transfer(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
-        let pre_index = opcode & (1 << 24) > 0;
-        let increment = opcode & (1 << 23) > 0;
-        let psr_and_force_user = opcode & (1 << 22) > 0;
-        let mut write_back = opcode & (1 << 21) > 0;
-        let load = opcode & (1 << 20) > 0;
+pub struct BlockDataTransferInstruction {
+    base_register_index: u32,
+    registers: u16,
+    load: bool,
+    write_back: bool,
+    increment: bool,
+    pre_index: bool,
+    psr_and_force_user: bool,
+    number_of_registers: u32,
+}
 
+impl BlockDataTransferInstruction {
+    pub fn decode(_registers: &mut RegisterBank, opcode: u32) -> Self {
         let base_register_index = (opcode >> 16) & 0xF;
-        let mut base_register = self.reg(base_register_index as usize);
-
-        let mut number_of_address = 0;
-        let mut r15_included = false;
+        let mut number_of_registers = 0;
         for i in 0..16 {
             if (1 << i) & opcode > 0 {
-                if i == 15 {
-                    r15_included = true;
-                }
-
-                number_of_address += 1;
+                number_of_registers += 1;
             }
         }
 
-        let new_address = base_register + number_of_address * 4;
-
-        base_register = if increment {
-            new_address
-        } else {
-            base_register
-        };
-        if pre_index == increment {
-            base_register += 4;
+        Self {
+            base_register_index,
+            registers: (opcode & 0xFFFF) as u16,
+            number_of_registers,
+            load: opcode & (1 << 20) > 0,
+            write_back: opcode & (1 << 21) > 0,
+            increment: opcode & (1 << 23) > 0,
+            pre_index: opcode & (1 << 24) > 0,
+            psr_and_force_user: opcode & (1 << 22) > 0,
         }
+    }
+}
 
-        let register_bank = if (!r15_included || !load) && psr_and_force_user {
-            CpuMode::User
+impl InstructionExecutor for BlockDataTransferInstruction {
+    fn execute(&self, registers: &mut RegisterBank, bus: &mut Bus) -> Result<usize, CoreError> {
+        let base_register = registers.reg(self.base_register_index as usize);
+        let mut base_address = if self.increment {
+            base_register
         } else {
-            self.cpsr.mode
+            base_register - 4 * (self.number_of_registers - 1)
+        };
+
+        let register_bank =
+            if (((self.registers & (1 << 15)) == 0) || !self.load) && self.psr_and_force_user {
+                CpuMode::User
+            } else {
+                registers.cpsr.mode
+            };
+
+        let new_address = if self.increment {
+            base_address + 4 * self.number_of_registers as u32
+        } else {
+            base_address
         };
         for i in 0..16 {
-            if (1 << i) & opcode > 0 {
-                if load {
-                    *self.reg_with_mode_mut(i, register_bank) =
-                        bus.read_dword(base_register).unwrap();
-
-                    if i == 15 && psr_and_force_user {
-                        self.cpsr = self.spsr();
-                    }
-                } else {
-                    bus.write_dword(base_register, self.reg_with_mode(i, register_bank))?;
+            if (1 << i) & self.registers > 0 {
+                if self.pre_index {
+                    base_address += 4;
                 }
 
-                base_register += 4;
+                if self.load {
+                    *registers.reg_with_mode_mut(i as usize, register_bank) =
+                        bus.read_dword(base_register).unwrap();
 
-                if i == base_register_index as usize {
-                    write_back = false;
+                    if i == 15 && self.psr_and_force_user {
+                        registers.cpsr = registers.spsr();
+                    }
+                } else {
+                    bus.write_dword(
+                        base_register,
+                        registers.reg_with_mode(i as usize, register_bank),
+                    )?;
+                }
+
+                if !self.pre_index {
+                    base_address += 4;
                 }
 
                 // Write back's behavior is undefined when using the user mode banks.
-                if write_back {
-                    *self.reg_mut(base_register_index as usize) = new_address;
-                    write_back = false;
+                if self.write_back {
+                    *registers.reg_mut(self.base_register_index as usize) = new_address;
                 }
             }
         }
 
-        self.log_instruction(
-            opcode,
-            &format!(
-                "{}{}{}",
-                if load { "ldm" } else { "stm" },
-                if increment { "i" } else { "d" },
-                if pre_index { "b" } else { "a" }
-            ),
-            &format!("r{}, #0x{:X}", base_register_index, opcode & 0xFFFF),
-        );
+        Ok(1)
+    }
+
+    fn mnemonic(&self) -> String {
+        format!(
+            "{}{}{}",
+            if self.load { "ldm" } else { "stm" },
+            if self.increment { "i" } else { "d" },
+            if self.pre_index { "b" } else { "a" }
+        )
+    }
+
+    fn description(&self) -> String {
+        let mut desc = format!("r{}", self.base_register_index);
+        if self.write_back {
+            desc.push_str("!");
+        }
+
+        desc.push_str(", {");
+        let mut first = true;
+        for i in 0..16 {
+            if (1 << i) & self.registers > 0 {
+                if !first {
+                    desc.push_str(", ");
+                }
+                first = false;
+                desc.push_str(&format!("r{}", i));
+            }
+        }
+
+        desc.push_str("}");
+
+        if self.psr_and_force_user {
+            desc.push_str("^");
+        }
+
+        desc
+    }
+}
+
+pub struct PsrTransferMrsInstruction {
+    destination_register_index: u32,
+    use_spsr: bool,
+}
+
+impl PsrTransferMrsInstruction {
+    pub fn decode(opcode: u32) -> Self {
+        Self {
+            destination_register_index: (opcode >> 12) & 0xF,
+            use_spsr: opcode & (1 << 22) > 0,
+        }
+    }
+}
+
+impl InstructionExecutor for PsrTransferMrsInstruction {
+    fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
+        let psr = if self.use_spsr {
+            registers.spsr().to_u32()
+        } else {
+            registers.cpsr.to_u32()
+        };
+
+        *registers.reg_mut(self.destination_register_index as usize) = psr;
 
         Ok(1)
     }
 
-    /// Transfer PSR contents to a register.
-    pub fn psr_transfer_mrs(&mut self, opcode: u32) -> usize {
-        let use_spsr = opcode & (1 << 22) > 0;
-        let psr = if use_spsr { self.spsr() } else { self.cpsr };
-        let destination_register_index = (opcode >> 12) & 0xF;
-
-        let psr = psr.to_u32();
-        *self.reg_mut(destination_register_index as usize) = psr;
-
-        self.log_instruction(
-            opcode,
-            "mrs",
-            &format!(
-                "r{destination_register_index} := {}{:X}",
-                if use_spsr { "spsr" } else { "cpsr" },
-                psr
-            ),
-        );
-
-        1
+    fn mnemonic(&self) -> String {
+        "mrs".to_string()
     }
 
-    /// Transfer register contents or immediate to PSR.
-    pub fn psr_transfer_msr(&mut self, opcode: u32) -> usize {
-        let operand_type = if opcode & (1 << 25) > 0 {
-            OperandType::Immediate
+    fn description(&self) -> String {
+        format!(
+            "r{}, {}",
+            self.destination_register_index,
+            if self.use_spsr { "spsr" } else { "cpsr" },
+        )
+    }
+}
+
+pub struct PsrTransferMsrInstruction {
+    operand: Operand,
+    use_spsr: bool,
+    write_flags: bool,
+    write_control: bool,
+}
+
+impl PsrTransferMsrInstruction {
+    pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
+        let operand = if opcode & (1 << 25) > 0 {
+            Operand::Immediate(opcode & 0xFFF)
         } else {
-            OperandType::Register
-        };
-        let use_spsr = opcode & (1 << 22) > 0;
-
-        let operand = match operand_type {
-            OperandType::Immediate => Self::shift_immediate(opcode),
-            OperandType::Register => self.reg((opcode & 0xF) as usize),
+            match Shift::from_opcode(opcode) {
+                Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
+                Shift::Register(shift) => Operand::RegisterShifted(shift),
+            }
         };
 
-        let psr = if use_spsr {
-            self.spsr_mut()
+        Self {
+            operand,
+            use_spsr: opcode & (1 << 22) > 0,
+            write_flags: opcode & (1 << 19) > 0,
+            write_control: opcode & (1 << 16) > 0,
+        }
+    }
+}
+
+impl InstructionExecutor for PsrTransferMsrInstruction {
+    fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
+        let operand = match &self.operand {
+            Operand::Immediate(value) => *value,
+            Operand::RegisterShifted(shift) => shift.shift(registers),
+        };
+
+        let psr = if self.use_spsr {
+            registers.spsr_mut()
         } else {
-            &mut self.cpsr
+            &mut registers.cpsr
         };
 
-        let psr_operand = ProgramStatusRegister::from_u32(operand);
-        let write_flags = opcode & (1 << 19) > 0;
-        if write_flags {
-            (*psr).zero = psr_operand.zero;
-            (*psr).signed = psr_operand.signed;
-            (*psr).carry = psr_operand.carry;
-            (*psr).overflow = psr_operand.overflow;
+        let psr_operand = super::status::ProgramStatusRegister::from_u32(operand);
+        if self.write_flags {
+            psr.zero = psr_operand.zero;
+            psr.signed = psr_operand.signed;
+            psr.carry = psr_operand.carry;
+            psr.overflow = psr_operand.overflow;
         }
 
-        let write_control = opcode & (1 << 16) > 0;
-        if write_control {
-            (*psr).irq_disable = psr_operand.irq_disable;
-            (*psr).fiq_disable = psr_operand.fiq_disable;
-            (*psr).instruction_mode = psr_operand.instruction_mode;
-            (*psr).mode = psr_operand.mode;
+        if self.write_control {
+            psr.irq_disable = psr_operand.irq_disable;
+            psr.fiq_disable = psr_operand.fiq_disable;
+            psr.instruction_mode = psr_operand.instruction_mode;
+            psr.mode = psr_operand.mode;
         }
 
-        self.log_instruction(
-            opcode,
-            "msr",
-            &format!(
-                "{}_{}{}, 0x{operand:X}",
-                if use_spsr { "spsr" } else { "cpsr" },
-                if write_flags { "f" } else { "" },
-                if write_control { "c" } else { "" }
-            ),
-        );
-
-        1
+        Ok(1)
     }
 
-    // TODO: Under the hood swp is implemented as a ldr and str instruction.
-    pub fn single_data_swap(&mut self, opcode: u32, bus: &mut Bus) -> Result<usize, CoreError> {
-        let source_register_index = opcode & 0xF;
-        let destination_register_index = (opcode >> 12) & 0xF;
-        let base_register_index = (opcode >> 16) & 0xF;
+    fn mnemonic(&self) -> String {
+        "msr".to_string()
+    }
 
-        let address = self.reg(base_register_index as usize);
+    fn description(&self) -> String {
+        format!(
+            "{}_{}{}, {}",
+            if self.use_spsr { "spsr" } else { "cpsr" },
+            if self.write_flags { "f" } else { "" },
+            if self.write_control { "c" } else { "" },
+            self.operand
+        )
+    }
+}
 
-        let data = bus.read_dword(address)?;
-        let source_register = self.reg(source_register_index as usize);
+pub struct SingleDataSwapInstruction {
+    source_register_index: u32,
+    destination_register_index: u32,
+    base_register_index: u32,
+    byte_transfer: bool,
+}
 
-        let byte_transfer = opcode & (1 << 22) > 0;
-        if byte_transfer {
+impl SingleDataSwapInstruction {
+    pub fn decode(opcode: u32) -> Self {
+        Self {
+            source_register_index: opcode & 0xF,
+            destination_register_index: (opcode >> 12) & 0xF,
+            base_register_index: (opcode >> 16) & 0xF,
+            byte_transfer: opcode & (1 << 22) > 0,
+        }
+    }
+}
+
+impl InstructionExecutor for SingleDataSwapInstruction {
+    fn execute(&self, registers: &mut RegisterBank, bus: &mut Bus) -> Result<usize, CoreError> {
+        let address = registers.reg(self.base_register_index as usize);
+        let data = if self.byte_transfer {
+            bus.read_byte(address)? as u32
+        } else {
+            bus.read_dword(address)?
+        };
+
+        let source_register = registers.reg(self.source_register_index as usize);
+
+        if self.byte_transfer {
             bus.write_byte(address, source_register as u8)?;
-            *self.reg_mut(destination_register_index as usize) = data & 0xFF;
+            *registers.reg_mut(self.destination_register_index as usize) = data & 0xFF;
         } else {
             bus.write_dword(address, source_register)?;
-            *self.reg_mut(destination_register_index as usize) = data;
+            *registers.reg_mut(self.destination_register_index as usize) = data;
         }
-
-        self.log_instruction(
-            opcode,
-            if byte_transfer { "swpb" } else { "swp" },
-            &format!(
-                "r{destination_register_index}, r{source_register_index}, [r{base_register_index}]",
-                destination_register_index = destination_register_index,
-                base_register_index = base_register_index,
-                source_register_index = source_register_index
-            ),
-        );
 
         Ok(1)
     }
-}*/
+
+    fn mnemonic(&self) -> String {
+        format!("swp{}", if self.byte_transfer { "b" } else { "" })
+    }
+
+    fn description(&self) -> String {
+        format!(
+            "r{}, r{}, [r{}]",
+            self.destination_register_index, self.source_register_index, self.base_register_index
+        )
+    }
+}
