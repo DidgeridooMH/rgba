@@ -46,43 +46,35 @@ impl InstructionExecutor for BranchInstruction {
 }
 
 pub struct BranchAndExchangeInstruction {
-    pub address: u32,
-    pub mode: InstructionMode,
+    pub target_register: u32,
 }
 
 impl BranchAndExchangeInstruction {
-    pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
-        let target_register = (opcode & 0xF) as usize;
-        let target_address = registers.reg(target_register);
-
+    pub fn decode(_registers: &mut RegisterBank, opcode: u32) -> Self {
         Self {
-            address: target_address & !1,
-            mode: if target_address & 1 > 0 {
-                InstructionMode::Thumb
-            } else {
-                InstructionMode::Arm
-            },
+            target_register: opcode & 0xF,
         }
     }
 }
 
 impl InstructionExecutor for BranchAndExchangeInstruction {
     fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
-        *registers.pc_mut() = self.address;
-        registers.cpsr.instruction_mode = self.mode;
+        let target_address = registers.reg(self.target_register as usize);
+        *registers.pc_mut() = target_address & !1;
+        registers.cpsr.instruction_mode = if target_address & 1 > 0 {
+            InstructionMode::Thumb
+        } else {
+            InstructionMode::Arm
+        };
 
         Ok(BRANCH_CYCLE_COUNT)
     }
 
     fn mnemonic(&self) -> String {
-        match self.mode {
-            InstructionMode::Arm => "bx",
-            InstructionMode::Thumb => "bxt",
-        }
-        .into()
+        "bx".into()
     }
 
     fn description(&self) -> String {
-        format!("${:08X}", self.address)
+        format!("r{}", self.target_register)
     }
 }
