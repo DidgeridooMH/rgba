@@ -30,8 +30,6 @@ impl Default for RegisterBank {
         s.spsr[3].mode = CpuMode::Abort;
         s.spsr[4].mode = CpuMode::Undefined;
 
-        *s.pc_mut() = 4;
-
         s
     }
 }

@@ -12,7 +12,10 @@ mod transfer;
 use interrupt::{SoftwareInterruptInstruction, SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK};
 use multiply::{MULTIPLY_FORMAT, MULTIPLY_LONG_FORMAT, MULTIPLY_MASK};
 use transfer::{
-    BlockDataTransferInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction, SingleDataSwapInstruction, BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, PSR_TRANSFER_MRS_FORMAT, PSR_TRANSFER_MRS_MASK, PSR_TRANSFER_MSR_FORMAT, PSR_TRANSFER_MSR_MASK, SINGLE_DATA_SWAP_FORMAT, SINGLE_DATA_SWAP_MASK
+    BlockDataTransferInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction,
+    SingleDataSwapInstruction, BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, PSR_TRANSFER_MRS_FORMAT,
+    PSR_TRANSFER_MRS_MASK, PSR_TRANSFER_MSR_FORMAT, PSR_TRANSFER_MSR_MASK, SINGLE_DATA_SWAP_FORMAT,
+    SINGLE_DATA_SWAP_MASK,
 };
 
 use self::{
@@ -45,13 +48,26 @@ impl Interpreter {
     }
 
     fn fetch(&mut self, bus: &mut Bus) -> Result<(), CoreError> {
-        let fetch_location = *self.registers.pc_mut() - 4;
+        let fetch_location = match self.registers.cpsr.instruction_mode {
+            InstructionMode::Arm => self.registers.pc(),
+            InstructionMode::Thumb => self.registers.pc(),
+        };
         self.fetched_instruction = Some((bus.read_dword(fetch_location)?, fetch_location));
-        *self.registers.pc_mut() += 4;
+        match self.registers.cpsr.instruction_mode {
+            InstructionMode::Arm => *self.registers.pc_mut() += 4,
+            InstructionMode::Thumb => *self.registers.pc_mut() += 2,
+        }
         Ok(())
     }
 
     fn decode(&mut self) -> Result<(), CoreError> {
+        match self.registers.cpsr.instruction_mode {
+            InstructionMode::Arm => self.decode_arm(),
+            InstructionMode::Thumb => self.decode_thumb(),
+        }
+    }
+
+    fn decode_arm(&mut self) -> Result<(), CoreError> {
         if let Some((fetched_instruction, pc)) = self.fetched_instruction {
             self.decoded_instruction = Some(Operation {
                 location: pc,
@@ -116,10 +132,19 @@ impl Interpreter {
         Ok(())
     }
 
+    fn decode_thumb(&mut self) -> Result<(), CoreError> {
+        if let Some((fetched_instruction, pc)) = self.fetched_instruction {
+            let fetched_instruction = fetched_instruction & 0xFFFF;
+            return Err(CoreError::OpcodeNotImplemented(fetched_instruction));
+        }
+
+        Ok(())
+    }
+
     fn execute(&mut self, bus: &mut Bus) -> Result<usize, CoreError> {
         match self.registers.cpsr.instruction_mode {
             InstructionMode::Arm => self.tick_arm(bus),
-            InstructionMode::Thumb => unimplemented!(),
+            InstructionMode::Thumb => self.tick_thumb(bus),
         }
     }
 
@@ -155,6 +180,10 @@ impl Interpreter {
             }
         }
 
+        Ok(1)
+    }
+
+    fn tick_thumb(&self, _bus: &mut Bus) -> Result<usize, CoreError> {
         Ok(1)
     }
 
