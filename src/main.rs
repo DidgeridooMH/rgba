@@ -10,7 +10,7 @@ struct Args {
     #[arg(short, long)]
     bios: String,
     #[arg(short, long)]
-    cycles: usize,
+    cycles: Option<usize>,
 }
 
 fn main() -> Result<()> {

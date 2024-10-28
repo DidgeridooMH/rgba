@@ -63,13 +63,19 @@ impl Gba {
         })
     }
 
-    pub fn emulate(&mut self, cycles: usize) -> Result<()> {
+    pub fn emulate(&mut self, cycles: Option<usize>) -> Result<()> {
         let mut cycles_done = 0;
-        while cycles_done < cycles {
+        loop {
             cycles_done += match self.cpu.tick(&mut self.bus) {
                 Ok(cycles) => cycles,
                 Err(e) => return Err(anyhow!("{}", e)),
             };
+
+            if let Some(cycles) = cycles {
+                if cycles_done >= cycles {
+                    break;
+                }
+            }
         }
 
         Ok(())
