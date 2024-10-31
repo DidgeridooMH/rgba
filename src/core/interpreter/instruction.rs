@@ -2,16 +2,12 @@ use std::fmt::Display;
 
 use crate::core::{Bus, CoreError};
 
-use super::{
-    arithmetic::DataProcessingInstruction,
-    branch::{BranchAndExchangeInstruction, BranchInstruction},
-    interrupt::SoftwareInterruptInstruction,
-    register::RegisterBank,
-    shift::RegisterShift,
-    transfer::{
-        BlockDataTransferInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction,
-        SingleDataSwapInstruction, SingleDataTransferInstruction,
-    },
+use super::{register::RegisterBank, shift::RegisterShift};
+
+use super::arm::{
+    BlockDataTransferInstruction, BranchAndExchangeInstruction, BranchInstruction,
+    DataProcessingInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction,
+    SingleDataSwapInstruction, SingleDataTransferInstruction, SoftwareInterruptInstruction,
 };
 
 pub trait InstructionExecutor {
@@ -21,6 +17,7 @@ pub trait InstructionExecutor {
 }
 
 pub enum Instruction {
+    // Arm Instructions
     Branch(BranchInstruction),
     BranchAndExchange(BranchAndExchangeInstruction),
     DataProcessing(DataProcessingInstruction),
@@ -30,6 +27,26 @@ pub enum Instruction {
     PsrTransferMrs(PsrTransferMrsInstruction),
     PsrTransferMsr(PsrTransferMsrInstruction),
     SingleDataSwap(SingleDataSwapInstruction),
+    // Thumb Instructions
+    ThumbSoftwareInterrupt,
+    ThumbUnconditionalBranch,
+    ThumbConditionalBranch,
+    ThumbMultipleLoadStore,
+    ThumbLongBranchWithLink,
+    AddOffsetToStackPointer,
+    PushPopRegisters,
+    LoadStoreHalfword,
+    SpRelativeLoadStore,
+    LoadAddress,
+    LoadStoreWithImmediateOffset,
+    LoadStorewithRegisterOffset,
+    LoadStoreSignExtByteHalfword,
+    PcRelativeLoad,
+    HiRegisterOperationsBranchExchange,
+    AluOperation,
+    MoveCompareAddSubtractImmediate,
+    AddSubtract,
+    MoveShiftedRegister,
 }
 
 pub struct Operation {

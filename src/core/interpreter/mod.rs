@@ -1,34 +1,25 @@
-mod arithmetic;
-mod branch;
+mod arm;
 mod disasm;
 mod instruction;
-mod interrupt;
-mod multiply;
 mod register;
 mod shift;
 mod status;
-mod transfer;
+mod thumb;
 
-use interrupt::{SoftwareInterruptInstruction, SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK};
-use multiply::{MULTIPLY_FORMAT, MULTIPLY_LONG_FORMAT, MULTIPLY_MASK};
-use transfer::{
-    BlockDataTransferInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction,
-    SingleDataSwapInstruction, BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, PSR_TRANSFER_MRS_FORMAT,
-    PSR_TRANSFER_MRS_MASK, PSR_TRANSFER_MSR_FORMAT, PSR_TRANSFER_MSR_MASK, SINGLE_DATA_SWAP_FORMAT,
-    SINGLE_DATA_SWAP_MASK,
+use arm::{
+    BlockDataTransferInstruction, BranchAndExchangeInstruction, BranchInstruction,
+    DataProcessingInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction,
+    SingleDataSwapInstruction, SingleDataTransferInstruction, SoftwareInterruptInstruction,
+    BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, BRANCH_AND_EXCHANGE_FORMAT,
+    BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK, DATA_PROCESSING_FORMAT,
+    DATA_PROCESSING_MASK, MULTIPLY_FORMAT, MULTIPLY_LONG_FORMAT, MULTIPLY_MASK,
+    PSR_TRANSFER_MRS_FORMAT, PSR_TRANSFER_MRS_MASK, PSR_TRANSFER_MSR_FORMAT, PSR_TRANSFER_MSR_MASK,
+    SINGLE_DATA_SWAP_FORMAT, SINGLE_DATA_SWAP_MASK, SINGLE_TRANSFER_FORMAT, SINGLE_TRANSFER_MASK,
+    SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK,
 };
-
-use self::{
-    arithmetic::{DataProcessingInstruction, DATA_PROCESSING_FORMAT, DATA_PROCESSING_MASK},
-    branch::{
-        BranchAndExchangeInstruction, BranchInstruction, BRANCH_AND_EXCHANGE_FORMAT,
-        BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK,
-    },
-    instruction::{Instruction, InstructionExecutor, Operation},
-    register::RegisterBank,
-    status::InstructionMode,
-    transfer::{SingleDataTransferInstruction, SINGLE_TRANSFER_FORMAT, SINGLE_TRANSFER_MASK},
-};
+use instruction::{Instruction, InstructionExecutor, Operation};
+use register::RegisterBank;
+use status::InstructionMode;
 
 use super::{Bus, CoreError};
 
@@ -133,7 +124,7 @@ impl Interpreter {
     }
 
     fn decode_thumb(&mut self) -> Result<(), CoreError> {
-        if let Some((fetched_instruction, pc)) = self.fetched_instruction {
+        if let Some((fetched_instruction, _pc)) = self.fetched_instruction {
             let fetched_instruction = fetched_instruction & 0xFFFF;
             return Err(CoreError::OpcodeNotImplemented(fetched_instruction));
         }
@@ -160,6 +151,10 @@ impl Interpreter {
                 Instruction::PsrTransferMrs(d) => d,
                 Instruction::PsrTransferMsr(d) => d,
                 Instruction::SingleDataSwap(d) => d,
+                _ => {
+                    // TODO: Implement an invalid instruction error.
+                    return Err(CoreError::OpcodeNotImplemented(0));
+                }
             };
 
             self.log_instruction(
