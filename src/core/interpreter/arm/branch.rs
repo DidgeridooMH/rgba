@@ -1,9 +1,9 @@
 use crate::core::{Bus, CoreError};
 
-use super::disasm::print_offset_as_immediate;
-use super::instruction::InstructionExecutor;
-use super::register::RegisterBank;
-use super::status::InstructionMode;
+use crate::core::interpreter::disasm::print_offset_as_immediate;
+use crate::core::interpreter::instruction::InstructionExecutor;
+use crate::core::interpreter::register::RegisterBank;
+use crate::core::interpreter::status::InstructionMode;
 
 pub const BRANCH_MASK: u32 = 0b0000_1110_0000_0000_0000_0000_0000_0000;
 pub const BRANCH_FORMAT: u32 = 0b0000_1010_0000_0000_0000_0000_0000_0000;
@@ -40,7 +40,7 @@ impl InstructionExecutor for BranchInstruction {
         if self.link { "bl" } else { "b" }.into()
     }
 
-    fn description(&self) -> String {
+    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
         print_offset_as_immediate(self.offset)
     }
 }
@@ -74,7 +74,11 @@ impl InstructionExecutor for BranchAndExchangeInstruction {
         "bx".into()
     }
 
-    fn description(&self) -> String {
-        format!("r{}", self.target_register)
+    fn description(&self, registers: &RegisterBank, _bus: &mut Bus) -> String {
+        format!(
+            "r{} (=${:X})",
+            self.target_register,
+            registers.reg(self.target_register as usize)
+        )
     }
 }

@@ -1,6 +1,6 @@
 use crate::core::{Bus, CoreError};
 
-use super::{
+use crate::core::interpreter::{
     disasm::print_offset_as_immediate, instruction::InstructionExecutor, register::RegisterBank,
 };
 
@@ -36,7 +36,7 @@ impl InstructionExecutor for SoftwareInterruptInstruction {
         "swi".into()
     }
 
-    fn description(&self) -> String {
+    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
         print_offset_as_immediate(self.comment as i32)
     }
 }

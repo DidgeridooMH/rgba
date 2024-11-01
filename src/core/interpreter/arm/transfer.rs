@@ -1,6 +1,7 @@
+use crate::core::interpreter::status::ProgramStatusRegister;
 use crate::core::{Bus, CoreError};
 
-use super::{
+use crate::core::interpreter::{
     instruction::{InstructionExecutor, Operand},
     register::RegisterBank,
     shift::Shift,
@@ -31,10 +32,35 @@ pub struct SingleDataTransferInstruction {
     byte_transfer: bool,
     up: bool,
     pre_index: bool,
+    force_word_alignment: bool,
 }
 
 impl SingleDataTransferInstruction {
-    pub fn decode(registers: &mut super::register::RegisterBank, opcode: u32) -> Self {
+    pub fn new(
+        source_register_index: u32,
+        base_register_index: u32,
+        offset: Operand,
+        load: bool,
+        write_back: bool,
+        byte_transfer: bool,
+        up: bool,
+        pre_index: bool,
+        force_word_alignment: bool,
+    ) -> Self {
+        Self {
+            source_register_index,
+            base_register_index,
+            offset,
+            load,
+            write_back,
+            byte_transfer,
+            up,
+            pre_index,
+            force_word_alignment,
+        }
+    }
+
+    pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
         let offset = if opcode & (1 << 25) > 0 {
             match Shift::from_opcode(opcode) {
                 Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
@@ -53,29 +79,37 @@ impl SingleDataTransferInstruction {
             byte_transfer: opcode & (1 << 22) > 0,
             up: opcode & (1 << 23) > 0,
             pre_index: opcode & (1 << 24) > 0,
+            force_word_alignment: false,
+        }
+    }
+
+    fn calculate_address(&self, registers: &RegisterBank) -> u32 {
+        let mut address = registers.reg(self.base_register_index as usize);
+
+        if self.force_word_alignment {
+            address &= !0b10;
+        }
+
+        if self.pre_index {
+            self.offset_address(address, registers)
+        } else {
+            address
+        }
+    }
+
+    fn offset_address(&self, address: u32, registers: &RegisterBank) -> u32 {
+        let offset = self.offset.value(registers);
+        if self.up {
+            address.wrapping_add(offset)
+        } else {
+            address.wrapping_sub(offset)
         }
     }
 }
 
 impl InstructionExecutor for SingleDataTransferInstruction {
-    fn execute(
-        &self,
-        registers: &mut super::register::RegisterBank,
-        bus: &mut Bus,
-    ) -> Result<usize, CoreError> {
-        let offset = match &self.offset {
-            Operand::Immediate(value) => *value,
-            Operand::RegisterShifted(shift) => shift.shift(registers),
-        };
-
-        let mut address = registers.reg(self.base_register_index as usize);
-        if self.pre_index {
-            if self.up {
-                address += offset;
-            } else {
-                address -= offset;
-            }
-        }
+    fn execute(&self, registers: &mut RegisterBank, bus: &mut Bus) -> Result<usize, CoreError> {
+        let address = self.calculate_address(registers);
 
         let mode = if !self.pre_index && self.write_back {
             CpuMode::User
@@ -89,9 +123,7 @@ impl InstructionExecutor for SingleDataTransferInstruction {
                 bus.read_dword(address)?
             };
             *registers.reg_with_mode_mut(self.source_register_index as usize, mode) =
-                if self.byte_transfer {
-                    data & 0xFF
-                } else if address % 4 == 2 {
+                if !self.byte_transfer && address % 4 == 2 {
                     data.rotate_left(16)
                 } else {
                     data
@@ -110,16 +142,12 @@ impl InstructionExecutor for SingleDataTransferInstruction {
             }
         }
 
-        if !self.pre_index {
-            if self.up {
-                address += offset;
-            } else {
-                address -= offset;
-            }
-        }
-
         if self.write_back || !self.pre_index {
-            *registers.reg_mut(self.base_register_index as usize) = address;
+            *registers.reg_mut(self.base_register_index as usize) = if !self.pre_index {
+                self.offset_address(address, registers)
+            } else {
+                address
+            }
         }
 
         Ok(1)
@@ -134,9 +162,38 @@ impl InstructionExecutor for SingleDataTransferInstruction {
         )
     }
 
-    fn description(&self) -> String {
+    fn description(&self, registers: &RegisterBank, bus: &mut Bus) -> String {
+        let address_hint = if self.load {
+            let address = self.calculate_address(registers);
+            let data = if self.byte_transfer {
+                match bus.read_byte(address) {
+                    Ok(data) => Ok(data as u32),
+                    Err(_) => Err(()),
+                }
+            } else {
+                match bus.read_dword(address) {
+                    Ok(data) => Ok(data),
+                    Err(_) => Err(()),
+                }
+            };
+
+            let data = match data {
+                Ok(d) => format!(
+                    "${:X}",
+                    if !self.byte_transfer && address % 4 == 2 {
+                        d.rotate_left(16)
+                    } else {
+                        d
+                    }
+                ),
+                Err(_) => "???".to_string(),
+            };
+            format!("(={})", data)
+        } else {
+            "".into()
+        };
         format!(
-            "r{}, [r{}], {}",
+            "r{}, [r{}], {} {address_hint}",
             self.source_register_index, self.base_register_index, self.offset
         )
     }
@@ -240,7 +297,7 @@ impl InstructionExecutor for BlockDataTransferInstruction {
         )
     }
 
-    fn description(&self) -> String {
+    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
         let mut desc = format!("r{}", self.base_register_index);
         if self.write_back {
             desc.push_str("!");
@@ -299,7 +356,7 @@ impl InstructionExecutor for PsrTransferMrsInstruction {
         "mrs".to_string()
     }
 
-    fn description(&self) -> String {
+    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
         format!(
             "r{}, {}",
             self.destination_register_index,
@@ -337,10 +394,7 @@ impl PsrTransferMsrInstruction {
 
 impl InstructionExecutor for PsrTransferMsrInstruction {
     fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
-        let operand = match &self.operand {
-            Operand::Immediate(value) => *value,
-            Operand::RegisterShifted(shift) => shift.shift(registers),
-        };
+        let operand = self.operand.value(registers);
 
         let psr = if self.use_spsr {
             registers.spsr_mut()
@@ -348,7 +402,7 @@ impl InstructionExecutor for PsrTransferMsrInstruction {
             &mut registers.cpsr
         };
 
-        let psr_operand = super::status::ProgramStatusRegister::from_u32(operand);
+        let psr_operand = ProgramStatusRegister::from_u32(operand);
         if self.write_flags {
             psr.zero = psr_operand.zero;
             psr.signed = psr_operand.signed;
@@ -370,7 +424,7 @@ impl InstructionExecutor for PsrTransferMsrInstruction {
         "msr".to_string()
     }
 
-    fn description(&self) -> String {
+    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
         format!(
             "{}_{}{}, {}",
             if self.use_spsr { "spsr" } else { "cpsr" },
@@ -425,7 +479,7 @@ impl InstructionExecutor for SingleDataSwapInstruction {
         format!("swp{}", if self.byte_transfer { "b" } else { "" })
     }
 
-    fn description(&self) -> String {
+    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
         format!(
             "r{}, r{}, [r{}]",
             self.destination_register_index, self.source_register_index, self.base_register_index

@@ -6,20 +6,10 @@ mod shift;
 mod status;
 mod thumb;
 
-use arm::{
-    BlockDataTransferInstruction, BranchAndExchangeInstruction, BranchInstruction,
-    DataProcessingInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction,
-    SingleDataSwapInstruction, SingleDataTransferInstruction, SoftwareInterruptInstruction,
-    BLOCK_TRANSFER_FORMAT, BLOCK_TRANSFER_MASK, BRANCH_AND_EXCHANGE_FORMAT,
-    BRANCH_AND_EXCHANGE_MASK, BRANCH_FORMAT, BRANCH_MASK, DATA_PROCESSING_FORMAT,
-    DATA_PROCESSING_MASK, MULTIPLY_FORMAT, MULTIPLY_LONG_FORMAT, MULTIPLY_MASK,
-    PSR_TRANSFER_MRS_FORMAT, PSR_TRANSFER_MRS_MASK, PSR_TRANSFER_MSR_FORMAT, PSR_TRANSFER_MSR_MASK,
-    SINGLE_DATA_SWAP_FORMAT, SINGLE_DATA_SWAP_MASK, SINGLE_TRANSFER_FORMAT, SINGLE_TRANSFER_MASK,
-    SOFTWARE_INTERRUPT_FORMAT, SOFTWARE_INTERRUPT_MASK,
-};
 use instruction::{Instruction, InstructionExecutor, Operation};
 use register::RegisterBank;
 use status::InstructionMode;
+use thumb::decode_add_subtract;
 
 use super::{Bus, CoreError};
 
@@ -39,10 +29,8 @@ impl Interpreter {
     }
 
     fn fetch(&mut self, bus: &mut Bus) -> Result<(), CoreError> {
-        let fetch_location = match self.registers.cpsr.instruction_mode {
-            InstructionMode::Arm => self.registers.pc(),
-            InstructionMode::Thumb => self.registers.pc(),
-        };
+        let fetch_location = self.registers.pc();
+        //println!("Fetching instruction from ${:08X}", fetch_location);
         self.fetched_instruction = Some((bus.read_dword(fetch_location)?, fetch_location));
         match self.registers.cpsr.instruction_mode {
             InstructionMode::Arm => *self.registers.pc_mut() += 4,
@@ -60,58 +48,74 @@ impl Interpreter {
 
     fn decode_arm(&mut self) -> Result<(), CoreError> {
         if let Some((fetched_instruction, pc)) = self.fetched_instruction {
+            /*println!(
+                "Decoding instruction ${:08X} at ${:08X}",
+                fetched_instruction, pc
+            );*/
             self.decoded_instruction = Some(Operation {
                 location: pc,
                 condition: fetched_instruction >> 28,
                 opcode: fetched_instruction,
-                instruction: if (fetched_instruction & BRANCH_AND_EXCHANGE_MASK)
-                    == BRANCH_AND_EXCHANGE_FORMAT
+                instruction: if (fetched_instruction & arm::BRANCH_AND_EXCHANGE_MASK)
+                    == arm::BRANCH_AND_EXCHANGE_FORMAT
                 {
-                    Instruction::BranchAndExchange(BranchAndExchangeInstruction::decode(
+                    Instruction::BranchAndExchange(arm::BranchAndExchangeInstruction::decode(
                         &mut self.registers,
                         fetched_instruction,
                     ))
-                } else if (fetched_instruction & BLOCK_TRANSFER_MASK) == BLOCK_TRANSFER_FORMAT {
-                    Instruction::BlockDataTransfer(BlockDataTransferInstruction::decode(
-                        &mut self.registers,
-                        fetched_instruction,
-                    ))
-                } else if (fetched_instruction & BRANCH_MASK) == BRANCH_FORMAT {
-                    Instruction::Branch(BranchInstruction::decode(
-                        &mut self.registers,
-                        fetched_instruction,
-                    ))
-                } else if (fetched_instruction & SOFTWARE_INTERRUPT_MASK)
-                    == SOFTWARE_INTERRUPT_FORMAT
+                } else if (fetched_instruction & arm::BLOCK_TRANSFER_MASK)
+                    == arm::BLOCK_TRANSFER_FORMAT
                 {
-                    Instruction::SoftwareInterrupt(SoftwareInterruptInstruction::decode(
+                    Instruction::BlockDataTransfer(arm::BlockDataTransferInstruction::decode(
                         &mut self.registers,
                         fetched_instruction,
                     ))
-                } else if (fetched_instruction & SINGLE_TRANSFER_MASK) == SINGLE_TRANSFER_FORMAT {
-                    Instruction::SingleDataTransfer(SingleDataTransferInstruction::decode(
+                } else if (fetched_instruction & arm::BRANCH_MASK) == arm::BRANCH_FORMAT {
+                    Instruction::Branch(arm::BranchInstruction::decode(
                         &mut self.registers,
                         fetched_instruction,
                     ))
-                } else if (fetched_instruction & SINGLE_DATA_SWAP_MASK) == SINGLE_DATA_SWAP_FORMAT {
-                    Instruction::SingleDataSwap(SingleDataSwapInstruction::decode(
+                } else if (fetched_instruction & arm::SOFTWARE_INTERRUPT_MASK)
+                    == arm::SOFTWARE_INTERRUPT_FORMAT
+                {
+                    Instruction::SoftwareInterrupt(arm::SoftwareInterruptInstruction::decode(
+                        &mut self.registers,
                         fetched_instruction,
                     ))
-                } else if (fetched_instruction & MULTIPLY_MASK) == MULTIPLY_FORMAT {
+                } else if (fetched_instruction & arm::SINGLE_TRANSFER_MASK)
+                    == arm::SINGLE_TRANSFER_FORMAT
+                {
+                    Instruction::SingleDataTransfer(arm::SingleDataTransferInstruction::decode(
+                        &mut self.registers,
+                        fetched_instruction,
+                    ))
+                } else if (fetched_instruction & arm::SINGLE_DATA_SWAP_MASK)
+                    == arm::SINGLE_DATA_SWAP_FORMAT
+                {
+                    Instruction::SingleDataSwap(arm::SingleDataSwapInstruction::decode(
+                        fetched_instruction,
+                    ))
+                } else if (fetched_instruction & arm::MULTIPLY_MASK) == arm::MULTIPLY_FORMAT {
                     unimplemented!()
-                } else if (fetched_instruction & MULTIPLY_MASK) == MULTIPLY_LONG_FORMAT {
+                } else if (fetched_instruction & arm::MULTIPLY_MASK) == arm::MULTIPLY_LONG_FORMAT {
                     unimplemented!()
-                } else if (fetched_instruction & PSR_TRANSFER_MRS_MASK) == PSR_TRANSFER_MRS_FORMAT {
-                    Instruction::PsrTransferMrs(PsrTransferMrsInstruction::decode(
+                } else if (fetched_instruction & arm::PSR_TRANSFER_MRS_MASK)
+                    == arm::PSR_TRANSFER_MRS_FORMAT
+                {
+                    Instruction::PsrTransferMrs(arm::PsrTransferMrsInstruction::decode(
                         fetched_instruction,
                     ))
-                } else if (fetched_instruction & PSR_TRANSFER_MSR_MASK) == PSR_TRANSFER_MSR_FORMAT {
-                    Instruction::PsrTransferMsr(PsrTransferMsrInstruction::decode(
+                } else if (fetched_instruction & arm::PSR_TRANSFER_MSR_MASK)
+                    == arm::PSR_TRANSFER_MSR_FORMAT
+                {
+                    Instruction::PsrTransferMsr(arm::PsrTransferMsrInstruction::decode(
                         &mut self.registers,
                         fetched_instruction,
                     ))
-                } else if (fetched_instruction & DATA_PROCESSING_MASK) == DATA_PROCESSING_FORMAT {
-                    Instruction::DataProcessing(DataProcessingInstruction::decode(
+                } else if (fetched_instruction & arm::DATA_PROCESSING_MASK)
+                    == arm::DATA_PROCESSING_FORMAT
+                {
+                    Instruction::DataProcessing(arm::DataProcessingInstruction::decode(
                         &mut self.registers,
                         fetched_instruction,
                     ))
@@ -124,22 +128,102 @@ impl Interpreter {
     }
 
     fn decode_thumb(&mut self) -> Result<(), CoreError> {
-        if let Some((fetched_instruction, _pc)) = self.fetched_instruction {
+        if let Some((fetched_instruction, pc)) = self.fetched_instruction {
             let fetched_instruction = fetched_instruction & 0xFFFF;
-            return Err(CoreError::OpcodeNotImplemented(fetched_instruction));
+            /*println!(
+                "Decoding instruction ${:04X} at ${:08X}",
+                fetched_instruction, pc
+            );*/
+            self.decoded_instruction = Some(Operation {
+                location: pc,
+                condition: 0xE,
+                opcode: fetched_instruction,
+                instruction: if (fetched_instruction & thumb::SOFTWARE_INTERRUPT_MASK)
+                    == thumb::SOFTWARE_INTERRUPT_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::UNCONDITIONAL_BRANCH_MASK)
+                    == thumb::UNCONDITIONAL_BRANCH_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::CONDITIONAL_BRANCH_MASK)
+                    == thumb::CONDITIONAL_BRANCH_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::MULTIPLE_LOAD_STORE_MASK)
+                    == thumb::MULTIPLE_LOAD_STORE_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::LONG_BRANCH_WITH_LINK_MASK)
+                    == thumb::LONG_BRANCH_WITH_LINK_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::ADD_OFFSET_TO_STACK_POINTER_MASK)
+                    == thumb::ADD_OFFSET_TO_STACK_POINTER_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::PUSH_POP_REGISTERS_MASK)
+                    == thumb::PUSH_POP_REGISTERS_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::LOAD_STORE_HALFWORD_MASK)
+                    == thumb::LOAD_STORE_HALFWORD_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::SP_RELATIVE_LOAD_STORE_MASK)
+                    == thumb::SP_RELATIVE_LOAD_STORE_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::LOAD_ADDRESS_MASK)
+                    == thumb::LOAD_ADDRESS_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::LOAD_STORE_WITH_IMMEDIATE_OFFSET_MASK)
+                    == thumb::LOAD_STORE_WITH_IMMEDIATE_OFFSET_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::LOAD_STORE_WITH_REGISTER_OFFSET_MASK)
+                    == thumb::LOAD_STORE_WITH_REGISTER_OFFSET_FORMAT
+                {
+                    thumb::decode_load_store_register_offset(fetched_instruction)
+                } else if (fetched_instruction & thumb::LOAD_STORE_SIGN_EXT_BYTE_HALFWORD_MASK)
+                    == thumb::LOAD_STORE_SIGN_EXT_BYTE_HALFWORD_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::PC_RELATIVE_LOAD_MASK)
+                    == thumb::PC_RELATIVE_LOAD_FORMAT
+                {
+                    thumb::decode_pc_relative_load(fetched_instruction)
+                } else if (fetched_instruction & thumb::HI_REGISTER_OPERATIONS_BRANCH_EXCHANGE_MASK)
+                    == thumb::HI_REGISTER_OPERATIONS_BRANCH_EXCHANGE_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::ALU_OPERATION_MASK)
+                    == thumb::ALU_OPERATION_FORMAT
+                {
+                    unimplemented!()
+                } else if (fetched_instruction & thumb::MOVE_COMPARE_ADD_SUBTRACT_IMMEDIATE_MASK)
+                    == thumb::MOVE_COMPARE_ADD_SUBTRACT_IMMEDIATE_FORMAT
+                {
+                    thumb::decode_mcas_immediate(fetched_instruction)
+                } else if (fetched_instruction & thumb::ADD_SUBTRACT_MASK)
+                    == thumb::ADD_SUBTRACT_FORMAT
+                {
+                    decode_add_subtract(fetched_instruction)
+                } else if (fetched_instruction & thumb::MOVE_SHIFTED_REGISTER_MASK)
+                    == thumb::MOVE_SHIFTED_REGISTER_FORMAT
+                {
+                    unimplemented!()
+                } else {
+                    return Err(CoreError::OpcodeNotImplemented(fetched_instruction));
+                },
+            })
         }
 
         Ok(())
     }
 
     fn execute(&mut self, bus: &mut Bus) -> Result<usize, CoreError> {
-        match self.registers.cpsr.instruction_mode {
-            InstructionMode::Arm => self.tick_arm(bus),
-            InstructionMode::Thumb => self.tick_thumb(bus),
-        }
-    }
-
-    fn tick_arm(&mut self, bus: &mut Bus) -> Result<usize, CoreError> {
         if let Some(decoded_instruction) = &self.decoded_instruction {
             let ins: &dyn InstructionExecutor = match &decoded_instruction.instruction {
                 Instruction::Branch(b) => b,
@@ -151,17 +235,14 @@ impl Interpreter {
                 Instruction::PsrTransferMrs(d) => d,
                 Instruction::PsrTransferMsr(d) => d,
                 Instruction::SingleDataSwap(d) => d,
-                _ => {
-                    // TODO: Implement an invalid instruction error.
-                    return Err(CoreError::OpcodeNotImplemented(0));
-                }
             };
 
             self.log_instruction(
                 decoded_instruction.location,
                 decoded_instruction.opcode,
+                decoded_instruction.condition,
                 &ins.mnemonic(),
-                &ins.description(),
+                &ins.description(&self.registers, bus),
             );
 
             if self.check_condition(decoded_instruction.condition) {
@@ -178,12 +259,15 @@ impl Interpreter {
         Ok(1)
     }
 
-    fn tick_thumb(&self, _bus: &mut Bus) -> Result<usize, CoreError> {
-        Ok(1)
-    }
-
-    pub fn log_instruction(&self, address: u32, opcode: u32, mneumonic: &str, description: &str) {
-        let condition = Self::get_condition_label(opcode >> 28);
+    pub fn log_instruction(
+        &self,
+        address: u32,
+        opcode: u32,
+        condition: u32,
+        mneumonic: &str,
+        description: &str,
+    ) {
+        let condition = Self::get_condition_label(condition);
         println!(
             "${address:08X}: {opcode:08X} {mneumonic}{}{condition} {description}",
             if condition.len() > 0 { "." } else { "" },

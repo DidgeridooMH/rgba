@@ -49,7 +49,7 @@ impl Gba {
             Rc::new(RefCell::new(SystemIoFlags::default())),
         );
         bus.register_region(
-            0x3000000..=0x3007FFF,
+            0x3000000..=0x3FFFFFF,
             Rc::new(RefCell::new(Wram::new(0x3000000, 0x8000))),
         );
         bus.register_region(

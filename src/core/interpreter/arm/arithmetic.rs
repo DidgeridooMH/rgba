@@ -1,6 +1,6 @@
 use crate::core::{Bus, CoreError};
 
-use super::{
+use crate::core::interpreter::{
     instruction::{InstructionExecutor, Operand},
     register::RegisterBank,
     shift::{rotated_immediate, Shift},
@@ -13,7 +13,7 @@ pub const DATA_PROCESSING_FORMAT: u32 = 0x00000000;
 
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
-enum DataProcessingOperation {
+pub enum DataProcessingOperation {
     // Rd := Op1 AND Op2
     And = 0,
     // Rd := Op1 EOR Op2
@@ -57,6 +57,22 @@ pub struct DataProcessingInstruction {
 }
 
 impl DataProcessingInstruction {
+    pub fn new(
+        update_conditions: bool,
+        source_register_index: u32,
+        operand: Operand,
+        destination_register_index: Option<u32>,
+        operation: DataProcessingOperation,
+    ) -> Self {
+        Self {
+            update_conditions,
+            source_register_index,
+            operand,
+            destination_register_index,
+            operation,
+        }
+    }
+
     pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
         let operand = if opcode & (1 << 25) > 0 {
             Operand::Immediate(rotated_immediate(opcode))
@@ -92,10 +108,7 @@ impl DataProcessingInstruction {
 impl InstructionExecutor for DataProcessingInstruction {
     fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
         let source = registers.reg(self.source_register_index as usize);
-        let operand = match &self.operand {
-            Operand::Immediate(value) => *value,
-            Operand::RegisterShifted(shift) => shift.shift(registers),
-        };
+        let operand = self.operand.value(registers);
         let (result, overflow) = match self.operation {
             DataProcessingOperation::And => (source & operand, false),
             DataProcessingOperation::Test => (source & operand, false),
@@ -185,7 +198,7 @@ impl InstructionExecutor for DataProcessingInstruction {
         .into()
     }
 
-    fn description(&self) -> String {
+    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
         if let Some(destination_register_index) = self.destination_register_index {
             format!(
                 "r{destination_register_index}, r{}, {}",

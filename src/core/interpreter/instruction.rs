@@ -13,11 +13,10 @@ use super::arm::{
 pub trait InstructionExecutor {
     fn execute(&self, registers: &mut RegisterBank, bus: &mut Bus) -> Result<usize, CoreError>;
     fn mnemonic(&self) -> String;
-    fn description(&self) -> String;
+    fn description(&self, registers: &RegisterBank, bus: &mut Bus) -> String;
 }
 
 pub enum Instruction {
-    // Arm Instructions
     Branch(BranchInstruction),
     BranchAndExchange(BranchAndExchangeInstruction),
     DataProcessing(DataProcessingInstruction),
@@ -27,26 +26,6 @@ pub enum Instruction {
     PsrTransferMrs(PsrTransferMrsInstruction),
     PsrTransferMsr(PsrTransferMsrInstruction),
     SingleDataSwap(SingleDataSwapInstruction),
-    // Thumb Instructions
-    ThumbSoftwareInterrupt,
-    ThumbUnconditionalBranch,
-    ThumbConditionalBranch,
-    ThumbMultipleLoadStore,
-    ThumbLongBranchWithLink,
-    AddOffsetToStackPointer,
-    PushPopRegisters,
-    LoadStoreHalfword,
-    SpRelativeLoadStore,
-    LoadAddress,
-    LoadStoreWithImmediateOffset,
-    LoadStorewithRegisterOffset,
-    LoadStoreSignExtByteHalfword,
-    PcRelativeLoad,
-    HiRegisterOperationsBranchExchange,
-    AluOperation,
-    MoveCompareAddSubtractImmediate,
-    AddSubtract,
-    MoveShiftedRegister,
 }
 
 pub struct Operation {
@@ -58,13 +37,25 @@ pub struct Operation {
 
 pub enum Operand {
     Immediate(u32),
+    Register(u32),
     RegisterShifted(RegisterShift),
+}
+
+impl Operand {
+    pub fn value(&self, registers: &RegisterBank) -> u32 {
+        match self {
+            Operand::Immediate(value) => *value,
+            Operand::Register(index) => registers.reg(*index as usize),
+            Operand::RegisterShifted(shift) => shift.shift(registers),
+        }
+    }
 }
 
 impl Display for Operand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Operand::Immediate(value) => write!(f, "#0x{:X}", value),
+            Operand::Register(value) => write!(f, "r{}", value),
             Operand::RegisterShifted(shift) => write!(f, "{}", shift),
         }
     }

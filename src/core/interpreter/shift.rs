@@ -83,20 +83,29 @@ impl Shift {
 
 impl ImmediateShift {
     pub fn shift(&self, registers: &RegisterBank) -> u32 {
-        self.shift_type.shift(registers.reg(self.base_register as usize), self.shift_amount)
+        self.shift_type.shift(
+            registers.reg(self.base_register as usize),
+            self.shift_amount,
+        )
     }
 }
 
 impl RegisterShift {
     pub fn shift(&self, registers: &RegisterBank) -> u32 {
-        self.shift_type
-            .shift(registers.reg(self.base_register as usize), registers.reg(self.shift_register as usize))
+        self.shift_type.shift(
+            registers.reg(self.base_register as usize),
+            registers.reg(self.shift_register as usize),
+        )
     }
 }
 
 impl Display for RegisterShift {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "r{}, {}, r{}", self.base_register, self.shift_type, self.shift_register)
+        write!(
+            f,
+            "r{}, {}, r{}",
+            self.base_register, self.shift_type, self.shift_register
+        )
     }
 }
 
