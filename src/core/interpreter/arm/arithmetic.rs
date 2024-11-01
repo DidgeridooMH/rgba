@@ -127,20 +127,19 @@ impl InstructionExecutor for DataProcessingInstruction {
                 (result, overflow)
             }
             DataProcessingOperation::AddWithCarry => {
-                // TODO: Check if this needs to account for a double carry.
-                let (result, _) = source.overflowing_add(operand);
-                let (result, overflow) = result.overflowing_add(registers.cpsr.carry as u32);
-                (result, overflow)
+                let (result, overflow1) = source.overflowing_add(operand);
+                let (result, overflow2) = result.overflowing_add(registers.cpsr.carry as u32);
+                (result, overflow1 || overflow2)
             }
             DataProcessingOperation::SubtractWithCarry => {
-                let (result, _) = source.overflowing_sub(operand);
-                let (result, overflow) = result.overflowing_add(registers.cpsr.carry as u32 - 1);
-                (result, overflow)
+                let (result, overflow1) = source.overflowing_sub(operand);
+                let (result, overflow2) = result.overflowing_add(registers.cpsr.carry as u32 - 1);
+                (result, overflow1 || overflow2)
             }
             DataProcessingOperation::ReverseSubtractWithCarry => {
-                let (result, _) = operand.overflowing_sub(source);
-                let (result, overflow) = result.overflowing_add(registers.cpsr.carry as u32 - 1);
-                (result, overflow)
+                let (result, overflow1) = operand.overflowing_sub(source);
+                let (result, overflow2) = result.overflowing_add(registers.cpsr.carry as u32 - 1);
+                (result, overflow1 || overflow2)
             }
             DataProcessingOperation::Compare => {
                 let (result, overflow) = source.overflowing_sub(operand);
@@ -162,8 +161,9 @@ impl InstructionExecutor for DataProcessingInstruction {
 
         // Check if condition code should be updated.
         if self.update_conditions {
-            registers.cpsr.overflow = overflow;
-            registers.cpsr.carry = source >= operand;
+            registers.cpsr.overflow =
+                ((source ^ operand) & 0x80000000 == 0) && ((source ^ result) & 0x80000000 != 0);
+            registers.cpsr.carry = overflow;
             registers.cpsr.zero = result == 0;
             registers.cpsr.signed = result & (1 << 31) > 0;
         }

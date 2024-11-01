@@ -14,14 +14,22 @@ pub const BRANCH_AND_EXCHANGE_FORMAT: u32 = 0b0000_0001_0010_1111_1111_1111_0001
 const BRANCH_CYCLE_COUNT: usize = 3;
 
 pub struct BranchInstruction {
-    link: bool,
+    link: Option<u32>,
     offset: i32,
 }
 
 impl BranchInstruction {
-    pub fn decode(_registers: &mut RegisterBank, opcode: u32) -> Self {
+    pub fn new(link: Option<u32>, offset: i32) -> Self {
+        Self { link, offset }
+    }
+
+    pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
         Self {
-            link: opcode & (1 << 24) > 0,
+            link: if opcode & (1 << 24) > 0 {
+                Some(registers.pc())
+            } else {
+                None
+            },
             offset: ((opcode & 0x00FF_FFFF) << 10) as i32 >> 8,
         }
     }
@@ -29,15 +37,15 @@ impl BranchInstruction {
 
 impl InstructionExecutor for BranchInstruction {
     fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
-        if self.link {
-            *registers.reg_mut(14) = registers.pc();
+        if let Some(link) = self.link {
+            *registers.reg_mut(14) = link;
         }
         *registers.pc_mut() = (registers.pc() as i32 + self.offset as i32) as u32;
         Ok(BRANCH_CYCLE_COUNT)
     }
 
     fn mnemonic(&self) -> String {
-        if self.link { "bl" } else { "b" }.into()
+        if let Some(_) = self.link { "bl" } else { "b" }.into()
     }
 
     fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
@@ -50,6 +58,10 @@ pub struct BranchAndExchangeInstruction {
 }
 
 impl BranchAndExchangeInstruction {
+    pub fn new(target_register: u32) -> Self {
+        Self { target_register }
+    }
+
     pub fn decode(_registers: &mut RegisterBank, opcode: u32) -> Self {
         Self {
             target_register: opcode & 0xF,

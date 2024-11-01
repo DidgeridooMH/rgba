@@ -9,7 +9,7 @@ mod thumb;
 use instruction::{Instruction, InstructionExecutor, Operation};
 use register::RegisterBank;
 use status::InstructionMode;
-use thumb::decode_add_subtract;
+use thumb::{decode_add_subtract, decode_conditional_branch, decode_hi_reg_branch_exchange};
 
 use super::{Bus, CoreError};
 
@@ -30,7 +30,6 @@ impl Interpreter {
 
     fn fetch(&mut self, bus: &mut Bus) -> Result<(), CoreError> {
         let fetch_location = self.registers.pc();
-        //println!("Fetching instruction from ${:08X}", fetch_location);
         self.fetched_instruction = Some((bus.read_dword(fetch_location)?, fetch_location));
         match self.registers.cpsr.instruction_mode {
             InstructionMode::Arm => *self.registers.pc_mut() += 4,
@@ -48,10 +47,6 @@ impl Interpreter {
 
     fn decode_arm(&mut self) -> Result<(), CoreError> {
         if let Some((fetched_instruction, pc)) = self.fetched_instruction {
-            /*println!(
-                "Decoding instruction ${:08X} at ${:08X}",
-                fetched_instruction, pc
-            );*/
             self.decoded_instruction = Some(Operation {
                 location: pc,
                 condition: fetched_instruction >> 28,
@@ -130,13 +125,15 @@ impl Interpreter {
     fn decode_thumb(&mut self) -> Result<(), CoreError> {
         if let Some((fetched_instruction, pc)) = self.fetched_instruction {
             let fetched_instruction = fetched_instruction & 0xFFFF;
-            /*println!(
-                "Decoding instruction ${:04X} at ${:08X}",
-                fetched_instruction, pc
-            );*/
             self.decoded_instruction = Some(Operation {
                 location: pc,
-                condition: 0xE,
+                condition: if (fetched_instruction & thumb::CONDITIONAL_BRANCH_MASK)
+                    == thumb::CONDITIONAL_BRANCH_FORMAT
+                {
+                    (fetched_instruction >> 8) & 0b1111
+                } else {
+                    0xE
+                },
                 opcode: fetched_instruction,
                 instruction: if (fetched_instruction & thumb::SOFTWARE_INTERRUPT_MASK)
                     == thumb::SOFTWARE_INTERRUPT_FORMAT
@@ -149,7 +146,7 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::CONDITIONAL_BRANCH_MASK)
                     == thumb::CONDITIONAL_BRANCH_FORMAT
                 {
-                    unimplemented!()
+                    decode_conditional_branch(fetched_instruction)
                 } else if (fetched_instruction & thumb::MULTIPLE_LOAD_STORE_MASK)
                     == thumb::MULTIPLE_LOAD_STORE_FORMAT
                 {
@@ -197,7 +194,7 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::HI_REGISTER_OPERATIONS_BRANCH_EXCHANGE_MASK)
                     == thumb::HI_REGISTER_OPERATIONS_BRANCH_EXCHANGE_FORMAT
                 {
-                    unimplemented!()
+                    decode_hi_reg_branch_exchange(fetched_instruction)
                 } else if (fetched_instruction & thumb::ALU_OPERATION_MASK)
                     == thumb::ALU_OPERATION_FORMAT
                 {
