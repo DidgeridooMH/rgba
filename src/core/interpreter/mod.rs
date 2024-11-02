@@ -9,7 +9,7 @@ mod thumb;
 use instruction::{Instruction, InstructionExecutor, Operation};
 use register::RegisterBank;
 use status::InstructionMode;
-use thumb::{decode_add_subtract, decode_conditional_branch, decode_hi_reg_branch_exchange};
+use thumb::{decode_add_offset_stack_pointer, decode_add_subtract, decode_conditional_branch, decode_hi_reg_branch_exchange, decode_push_pop_registers, decode_sp_relative_load_store};
 
 use super::{Bus, CoreError};
 
@@ -158,11 +158,11 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::ADD_OFFSET_TO_STACK_POINTER_MASK)
                     == thumb::ADD_OFFSET_TO_STACK_POINTER_FORMAT
                 {
-                    unimplemented!()
+                    decode_add_offset_stack_pointer(fetched_instruction)
                 } else if (fetched_instruction & thumb::PUSH_POP_REGISTERS_MASK)
                     == thumb::PUSH_POP_REGISTERS_FORMAT
                 {
-                    unimplemented!()
+                    decode_push_pop_registers(fetched_instruction)
                 } else if (fetched_instruction & thumb::LOAD_STORE_HALFWORD_MASK)
                     == thumb::LOAD_STORE_HALFWORD_FORMAT
                 {
@@ -170,7 +170,7 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::SP_RELATIVE_LOAD_STORE_MASK)
                     == thumb::SP_RELATIVE_LOAD_STORE_FORMAT
                 {
-                    unimplemented!()
+                    decode_sp_relative_load_store(fetched_instruction)
                 } else if (fetched_instruction & thumb::LOAD_ADDRESS_MASK)
                     == thumb::LOAD_ADDRESS_FORMAT
                 {

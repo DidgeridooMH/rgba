@@ -211,6 +211,28 @@ pub struct BlockDataTransferInstruction {
 }
 
 impl BlockDataTransferInstruction {
+    pub fn new(
+        base_register_index: u32,
+        registers: u16,
+        load: bool,
+        write_back: bool,
+        increment: bool,
+        pre_index: bool,
+        psr_and_force_user: bool,
+        number_of_registers: u32,
+    ) -> Self {
+        Self {
+            base_register_index,
+            registers,
+            load,
+            write_back,
+            increment,
+            pre_index,
+            psr_and_force_user,
+            number_of_registers,
+        }
+    }
+
     pub fn decode(_registers: &mut RegisterBank, opcode: u32) -> Self {
         let base_register_index = (opcode >> 16) & 0xF;
         let mut number_of_registers = 0;
