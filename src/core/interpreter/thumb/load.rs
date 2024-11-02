@@ -64,3 +64,10 @@ pub fn decode_sp_relative_load_store(opcode: u32) -> Instruction {
         false,
     ))
 }
+
+pub fn decode_load_store_halfword(opcode: u32) -> Instruction {
+    let load = (opcode >> 11) & 1 > 0;
+    let rb = (opcode >> 3) & 0b111;
+    let rd = opcode & 0b111;
+
+}

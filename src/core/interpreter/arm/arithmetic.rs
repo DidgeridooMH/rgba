@@ -79,7 +79,7 @@ impl DataProcessingInstruction {
         } else {
             match Shift::from_opcode(opcode) {
                 Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
-                Shift::Register(shift) => Operand::RegisterShifted(shift),
+                Shift::Register(shift) => Operand::RegisterShifted(Shift::Register(shift)),
             }
         };
 

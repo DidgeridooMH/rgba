@@ -9,7 +9,11 @@ mod thumb;
 use instruction::{Instruction, InstructionExecutor, Operation};
 use register::RegisterBank;
 use status::InstructionMode;
-use thumb::{decode_add_offset_stack_pointer, decode_add_subtract, decode_conditional_branch, decode_hi_reg_branch_exchange, decode_push_pop_registers, decode_sp_relative_load_store};
+use thumb::{
+    decode_add_offset_stack_pointer, decode_add_subtract, decode_alu_operations,
+    decode_conditional_branch, decode_hi_reg_branch_exchange, decode_move_shifted_register,
+    decode_push_pop_registers, decode_sp_relative_load_store, LongBranchWithLinkInstruction,
+};
 
 use super::{Bus, CoreError};
 
@@ -154,7 +158,9 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::LONG_BRANCH_WITH_LINK_MASK)
                     == thumb::LONG_BRANCH_WITH_LINK_FORMAT
                 {
-                    unimplemented!()
+                    Instruction::LongBranchWithLink(LongBranchWithLinkInstruction::decode(
+                        fetched_instruction,
+                    ))
                 } else if (fetched_instruction & thumb::ADD_OFFSET_TO_STACK_POINTER_MASK)
                     == thumb::ADD_OFFSET_TO_STACK_POINTER_FORMAT
                 {
@@ -198,7 +204,7 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::ALU_OPERATION_MASK)
                     == thumb::ALU_OPERATION_FORMAT
                 {
-                    unimplemented!()
+                    decode_alu_operations(fetched_instruction)
                 } else if (fetched_instruction & thumb::MOVE_COMPARE_ADD_SUBTRACT_IMMEDIATE_MASK)
                     == thumb::MOVE_COMPARE_ADD_SUBTRACT_IMMEDIATE_FORMAT
                 {
@@ -210,7 +216,7 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::MOVE_SHIFTED_REGISTER_MASK)
                     == thumb::MOVE_SHIFTED_REGISTER_FORMAT
                 {
-                    unimplemented!()
+                    decode_move_shifted_register(fetched_instruction)
                 } else {
                     return Err(CoreError::OpcodeNotImplemented(fetched_instruction));
                 },
@@ -232,6 +238,7 @@ impl Interpreter {
                 Instruction::PsrTransferMrs(d) => d,
                 Instruction::PsrTransferMsr(d) => d,
                 Instruction::SingleDataSwap(d) => d,
+                Instruction::LongBranchWithLink(d) => d,
             };
 
             self.log_instruction(

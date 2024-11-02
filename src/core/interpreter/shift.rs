@@ -13,10 +13,30 @@ pub struct RegisterShift {
     shift_type: ShiftType,
 }
 
+impl RegisterShift {
+    pub fn new(base_register: u32, shift_register: u32, shift_type: ShiftType) -> Self {
+        Self {
+            base_register,
+            shift_register,
+            shift_type,
+        }
+    }
+}
+
 pub struct ImmediateShift {
     base_register: u32,
     shift_amount: u32,
     shift_type: ShiftType,
+}
+
+impl ImmediateShift {
+    pub fn new(base_register: u32, shift_amount: u32, shift_type: ShiftType) -> Self {
+        Self {
+            base_register,
+            shift_amount,
+            shift_type,
+        }
+    }
 }
 
 pub enum Shift {
@@ -24,7 +44,7 @@ pub enum Shift {
     Immediate(ImmediateShift),
 }
 
-enum ShiftType {
+pub enum ShiftType {
     LogicalLeft,
     LogicalRight,
     ArithmeticRight,
@@ -79,6 +99,13 @@ impl Shift {
             })
         }
     }
+
+    pub fn shift(&self, registers: &RegisterBank) -> u32 {
+        match self {
+            Shift::Register(shift) => shift.shift(registers),
+            Shift::Immediate(shift) => shift.shift(registers),
+        }
+    }
 }
 
 impl ImmediateShift {
@@ -99,12 +126,31 @@ impl RegisterShift {
     }
 }
 
+impl Display for Shift {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Shift::Register(shift) => write!(f, "{}", shift),
+            Shift::Immediate(shift) => write!(f, "{}", shift),
+        }
+    }
+}
+
 impl Display for RegisterShift {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "r{}, {}, r{}",
             self.base_register, self.shift_type, self.shift_register
+        )
+    }
+}
+
+impl Display for ImmediateShift {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "r{}, {}, #{:X}",
+            self.base_register, self.shift_type, self.shift_amount
         )
     }
 }

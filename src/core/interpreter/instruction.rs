@@ -2,7 +2,9 @@ use std::fmt::Display;
 
 use crate::core::{Bus, CoreError};
 
-use super::{register::RegisterBank, shift::RegisterShift};
+use super::register::RegisterBank;
+use super::shift::Shift;
+use super::thumb::LongBranchWithLinkInstruction;
 
 use super::arm::{
     BlockDataTransferInstruction, BranchAndExchangeInstruction, BranchInstruction,
@@ -19,6 +21,7 @@ pub trait InstructionExecutor {
 pub enum Instruction {
     Branch(BranchInstruction),
     BranchAndExchange(BranchAndExchangeInstruction),
+    LongBranchWithLink(LongBranchWithLinkInstruction),
     DataProcessing(DataProcessingInstruction),
     SingleDataTransfer(SingleDataTransferInstruction),
     SoftwareInterrupt(SoftwareInterruptInstruction),
@@ -38,7 +41,7 @@ pub struct Operation {
 pub enum Operand {
     Immediate(u32),
     Register(u32),
-    RegisterShifted(RegisterShift),
+    RegisterShifted(Shift),
 }
 
 impl Operand {

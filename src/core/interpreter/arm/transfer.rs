@@ -23,6 +23,9 @@ pub const PSR_TRANSFER_MSR_FORMAT: u32 = 0b0000_0001_0010_0000_1111_0000_0000_00
 pub const SINGLE_DATA_SWAP_MASK: u32 = 0b0000_1111_1000_0000_0000_1111_1111_0000;
 pub const SINGLE_DATA_SWAP_FORMAT: u32 = 0b0000_0001_0000_0000_0000_0000_1001_0000;
 
+pub const HALFWORD_DATA_TRANSFER_REG_MASK: u32 = 0b0000_1110_0100_0000_0000_1111_1001_0000;
+pub const HALFWORD_DATA_TRANSFER_REG_FORMAT: u32 = 0b0000_0000_0000_0000_0000_0000_1001_0000;
+
 pub struct SingleDataTransferInstruction {
     source_register_index: u32,
     base_register_index: u32,
@@ -64,7 +67,7 @@ impl SingleDataTransferInstruction {
         let offset = if opcode & (1 << 25) > 0 {
             match Shift::from_opcode(opcode) {
                 Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
-                Shift::Register(shift) => Operand::RegisterShifted(shift),
+                Shift::Register(shift) => Operand::RegisterShifted(Shift::Register(shift)),
             }
         } else {
             Operand::Immediate(opcode & 0xFFF)
@@ -401,7 +404,7 @@ impl PsrTransferMsrInstruction {
         } else {
             match Shift::from_opcode(opcode) {
                 Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
-                Shift::Register(shift) => Operand::RegisterShifted(shift),
+                Shift::Register(shift) => Operand::RegisterShifted(Shift::Register(shift)),
             }
         };
 
@@ -507,4 +510,40 @@ impl InstructionExecutor for SingleDataSwapInstruction {
             self.destination_register_index, self.source_register_index, self.base_register_index
         )
     }
+}
+
+pub struct HalfwordDataTransferRegInstruction {
+    pre_index: bool,
+    up: bool,
+    write_back: bool,
+    load: bool,
+    signed: bool,
+    halfword: bool,
+    base_register: u32,
+    offset_register: u32,
+    destination_register: u32,
+}
+
+impl HalfwordDataTransferRegInstruction {
+    pub fn decode(opcode: u32) -> Self {
+        Self {
+            pre_index: opcode & (1 << 24) > 0,
+            up: opcode & (1 << 23) > 0,
+            write_back: opcode & (1 << 21) > 0,
+            load: opcode & (1 << 20) > 0,
+            signed: opcode & (1 << 6) > 0,
+            halfword: opcode & (1 << 5) > 0,
+            base_register: (opcode >> 16) & 0xF,
+            offset_register: opcode & 0xF,
+            destination_register: (opcode >> 12) & 0xF,
+        }
+    }
+}
+
+impl InstructionExecutor for HalfwordDataTransferRegInstruction {
+    fn execute(&self, registers: &mut RegisterBank, bus: &mut Bus) -> Result<usize, CoreError> {}
+
+    fn mnemonic(&self) -> String {}
+
+    fn description(&self, registers: &RegisterBank, bus: &mut Bus) -> String {}
 }

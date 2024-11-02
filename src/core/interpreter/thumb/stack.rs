@@ -38,7 +38,7 @@ pub fn decode_push_pop_registers(opcode: u32) -> Instruction {
 }
 
 pub fn decode_add_offset_stack_pointer(opcode: u32) -> Instruction {
-    let offset = opcode & 0x7F;
+    let offset = (opcode & 0x7F) << 2;
     let sign = (opcode >> 7) & 1 > 0;
 
     Instruction::DataProcessing(DataProcessingInstruction::new(
@@ -47,9 +47,9 @@ pub fn decode_add_offset_stack_pointer(opcode: u32) -> Instruction {
         Operand::Immediate(offset),
         Some(13),
         if sign {
-            DataProcessingOperation::Add
-        } else {
             DataProcessingOperation::Subtract
+        } else {
+            DataProcessingOperation::Add
         },
     ))
 }
