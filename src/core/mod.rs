@@ -9,8 +9,11 @@ pub use bios::*;
 
 mod memory;
 
+mod lcd;
+
 use anyhow::{anyhow, Result};
-use std::{cell::RefCell, fmt, rc::Rc};
+use lcd::Lcd;
+use std::{cell::RefCell, fmt, rc::Rc, time::Instant};
 
 use memory::{system_io::SystemIoFlags, wram::Wram};
 
@@ -44,6 +47,7 @@ impl Gba {
 
         let bios = Bios::new(bios_filename)?;
         bus.register_region(0..=0x3FFF, Rc::new(RefCell::new(bios)));
+        bus.register_region(0x4000000..=0x4000056, Rc::new(RefCell::new(Lcd::default())));
         bus.register_region(
             0x4000200..=0x4700000,
             Rc::new(RefCell::new(SystemIoFlags::default())),
@@ -57,13 +61,18 @@ impl Gba {
             Rc::new(RefCell::new(Wram::new(0x8000000, 0x8000000))),
         );
 
+        let mut cpu = Interpreter::default();
+        // TODO: Implement async logging.
+        cpu.logging_enabled = true;
+
         Ok(Self {
-            cpu: Interpreter::default(),
+            cpu,
             bus,
         })
     }
 
     pub fn emulate(&mut self, cycles: Option<usize>) -> Result<()> {
+        let start = Instant::now();
         let mut cycles_done = 0;
         loop {
             cycles_done += match self.cpu.tick(&mut self.bus) {
@@ -77,6 +86,22 @@ impl Gba {
                 }
             }
         }
+        let elapsed = start.elapsed();
+        let speed =  cycles_done as f64 / elapsed.as_secs_f64();
+
+        println!("Cycles completed: {cycles_done}");
+        println!("Elapsed time: {}ms", elapsed.as_millis());
+        println!(
+            "Instructions per second: {speed}",
+        );
+
+        const NECESSARY_SPEED: f64 = (16.78 * 1e6) / 4.0;
+        if speed < NECESSARY_SPEED {
+            println!(
+                "Warning: Emulation speed is too slow. Speed: {speed:.0} Instructions per second, Necessary speed: {NECESSARY_SPEED:.0} Instructions per second"
+            );
+        }
+
 
         Ok(())
     }

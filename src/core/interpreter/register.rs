@@ -1,4 +1,4 @@
-use super::status::{CpuMode, ProgramStatusRegister};
+use super::status::{CpuMode, InstructionMode, ProgramStatusRegister};
 
 pub struct RegisterBank {
     reg: [u32; 16],
@@ -9,6 +9,7 @@ pub struct RegisterBank {
     und_reg: [u32; 2],
     spsr: [ProgramStatusRegister; 5],
     pub cpsr: ProgramStatusRegister,
+    pub pipeline_flush: bool,
 }
 
 impl Default for RegisterBank {
@@ -22,6 +23,7 @@ impl Default for RegisterBank {
             und_reg: [0; 2],
             spsr: [ProgramStatusRegister::default(); 5],
             cpsr: ProgramStatusRegister::default(),
+            pipeline_flush: false,
         };
 
         s.spsr[0].mode = CpuMode::Fiq;
@@ -35,8 +37,16 @@ impl Default for RegisterBank {
 }
 
 impl RegisterBank {
-    pub fn pc_mut(&mut self) -> &mut u32 {
-        self.reg_mut(15)
+    pub fn increment_pc(&mut self) {
+        match self.cpsr.instruction_mode {
+            InstructionMode::Arm => *self.reg_mut(15) += 4,
+            InstructionMode::Thumb => *self.reg_mut(15) += 2,
+        }
+    }
+
+    pub fn set_pc(&mut self, value: u32) {
+        *self.reg_mut(15) = value;
+        self.pipeline_flush = true;
     }
 
     pub fn pc(&self) -> u32 {

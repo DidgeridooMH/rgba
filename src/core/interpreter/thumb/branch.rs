@@ -25,8 +25,8 @@ pub const LONG_BRANCH_WITH_LINK_FORMAT: u32 = 0b1111_0000_0000_0000;
 pub const LONG_BRANCH_WITH_LINK_MASK: u32 = 0b1111_0000_0000_0000;
 
 pub fn decode_conditional_branch(opcode: u32) -> Instruction {
-    let offset = (opcode & 0xFF) as i8;
-    Instruction::Branch(BranchInstruction::new(None, (offset as i32) - 4))
+    let offset = (((opcode & 0xFF) as i8) as i32) << 1;
+    Instruction::Branch(BranchInstruction::new(None, offset as i32))
 }
 
 #[derive(TryFromPrimitive)]
@@ -94,12 +94,10 @@ impl InstructionExecutor for LongBranchWithLinkInstruction {
         if self.h {
             let address = (registers.reg(14) + (self.offset << 1)) & !1;
             let pc = registers.pc() - 2;
-            *registers.pc_mut() = address;
+            registers.set_pc(address);
             *registers.reg_mut(14) = pc | 1;
         } else {
-            let address = registers
-                .pc()
-                .wrapping_add((self.offset << 12) | 0xFF800000);
+            let address = registers.pc().wrapping_add(self.offset << 12) & !0xFF800000;
             *registers.reg_mut(14) = address;
         }
 

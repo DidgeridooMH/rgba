@@ -23,6 +23,7 @@ pub struct Interpreter {
     registers: RegisterBank,
     fetched_instruction: Option<(u32, u32)>,
     decoded_instruction: Option<Operation>,
+    pub logging_enabled: bool,
 }
 
 impl Interpreter {
@@ -36,10 +37,7 @@ impl Interpreter {
     fn fetch(&mut self, bus: &mut Bus) -> Result<(), CoreError> {
         let fetch_location = self.registers.pc();
         self.fetched_instruction = Some((bus.read_dword(fetch_location)?, fetch_location));
-        match self.registers.cpsr.instruction_mode {
-            InstructionMode::Arm => *self.registers.pc_mut() += 4,
-            InstructionMode::Thumb => *self.registers.pc_mut() += 2,
-        }
+        self.registers.increment_pc();
         Ok(())
     }
 
@@ -199,7 +197,7 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::LOAD_STORE_SIGN_EXT_BYTE_HALFWORD_MASK)
                     == thumb::LOAD_STORE_SIGN_EXT_BYTE_HALFWORD_FORMAT
                 {
-                    unimplemented!()
+                    thumb::decode_load_store_sign_extended(fetched_instruction)
                 } else if (fetched_instruction & thumb::PC_RELATIVE_LOAD_MASK)
                     == thumb::PC_RELATIVE_LOAD_FORMAT
                 {
@@ -258,11 +256,11 @@ impl Interpreter {
             );
 
             if self.check_condition(decoded_instruction.condition) {
-                let original_pc = self.registers.pc();
                 let cycles = ins.execute(&mut self.registers, bus);
-                if self.registers.pc() != original_pc {
+                if self.registers.pipeline_flush {
                     self.decoded_instruction = None;
                     self.fetched_instruction = None;
+                    self.registers.pipeline_flush = false;
                 }
                 return cycles;
             }
@@ -279,11 +277,13 @@ impl Interpreter {
         mneumonic: &str,
         description: &str,
     ) {
-        let condition = Self::get_condition_label(condition);
-        println!(
-            "${address:08X}: {opcode:08X} {mneumonic}{}{condition} {description}",
-            if condition.len() > 0 { "." } else { "" },
-        );
+        if self.logging_enabled {
+            let condition = Self::get_condition_label(condition);
+            println!(
+                "${address:08X}: {opcode:08X} {mneumonic}{}{condition} {description}",
+                if condition.len() > 0 { "." } else { "" },
+            );
+        }
     }
 
     fn get_condition_label(condition_code: u32) -> &'static str {

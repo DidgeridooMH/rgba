@@ -26,7 +26,7 @@ impl SoftwareInterruptInstruction {
 impl InstructionExecutor for SoftwareInterruptInstruction {
     fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
         *registers.reg_mut(14) = self.past_address;
-        *registers.pc_mut() = SOFTWARE_INTERRUPT_PC_OFFSET;
+        registers.set_pc(SOFTWARE_INTERRUPT_PC_OFFSET);
         *registers.spsr_mut() = registers.cpsr;
 
         Ok(1)

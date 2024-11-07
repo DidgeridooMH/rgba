@@ -12,6 +12,12 @@ pub const PC_RELATIVE_LOAD_MASK: u32 = 0b1111_1000_0000_0000;
 pub const SP_RELATIVE_LOAD_STORE_FORMAT: u32 = 0b1001_0000_0000_0000;
 pub const SP_RELATIVE_LOAD_STORE_MASK: u32 = 0b1111_0000_0000_0000;
 
+pub const LOAD_STORE_HALFWORD_FORMAT: u32 = 0b1000_0000_0000_0000;
+pub const LOAD_STORE_HALFWORD_MASK: u32 = 0b1111_0000_0000_0000;
+
+pub const LOAD_STORE_SIGN_EXT_BYTE_HALFWORD_FORMAT: u32 = 0b0101_0010_0000_0000;
+pub const LOAD_STORE_SIGN_EXT_BYTE_HALFWORD_MASK: u32 = 0b1111_0010_0000_0000;
+
 pub fn decode_load_store_register_offset(opcode: u32) -> Instruction {
     let load = (opcode >> 11) & 1 > 0;
     let byte = (opcode >> 10) & 1 > 0;
@@ -66,6 +72,30 @@ pub fn decode_sp_relative_load_store(opcode: u32) -> Instruction {
 }
 
 pub fn decode_load_store_halfword(opcode: u32) -> Instruction {
+    let load = (opcode >> 11) & 1 > 0;
+    let halfword = (opcode >> 12) & 1 > 0;
+    let offset = if halfword {
+        ((opcode >> 6) & 0b11111) << 2
+    } else {
+        (opcode >> 6) & 0b11111
+    };
+    let rb = (opcode >> 3) & 0b111;
+    let rd = opcode & 0b111;
+
+    Instruction::HalfwordDataTransfer(HalfwordDataTransferRegInstruction::new(
+        true,
+        true,
+        false,
+        load,
+        false,
+        halfword,
+        rb,
+        HalfwordDataOffset::Offset(offset as u8),
+        rd,
+    ))
+}
+
+pub fn decode_load_store_sign_extended(opcode: u32) -> Instruction {
     let halfword = (opcode >> 11) & 1 > 0;
     let sign = (opcode >> 10) & 1 > 0;
     let ro = (opcode >> 6) & 0b111;

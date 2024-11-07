@@ -40,7 +40,7 @@ impl InstructionExecutor for BranchInstruction {
         if let Some(link) = self.link {
             *registers.reg_mut(14) = link;
         }
-        *registers.pc_mut() = (registers.pc() as i32 + self.offset as i32) as u32;
+        registers.set_pc((registers.pc() as i32 + self.offset as i32) as u32);
         Ok(BRANCH_CYCLE_COUNT)
     }
 
@@ -72,7 +72,7 @@ impl BranchAndExchangeInstruction {
 impl InstructionExecutor for BranchAndExchangeInstruction {
     fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
         let target_address = registers.reg(self.target_register as usize);
-        *registers.pc_mut() = target_address & !1;
+        registers.set_pc(target_address & !1);
         registers.cpsr.instruction_mode = if target_address & 1 > 0 {
             InstructionMode::Thumb
         } else {
