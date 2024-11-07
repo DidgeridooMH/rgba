@@ -29,6 +29,14 @@ pub fn decode_conditional_branch(opcode: u32) -> Instruction {
     Instruction::Branch(BranchInstruction::new(None, offset as i32))
 }
 
+pub fn decode_unconditional_branch(opcode: u32) -> Instruction {
+    let mut offset = (opcode & 0x7FF) << 1;
+    if (offset >> 10) & 1 > 0 {
+        offset |= 0xF8000000;
+    }
+    Instruction::Branch(BranchInstruction::new(None, offset as i32))
+}
+
 #[derive(TryFromPrimitive)]
 #[repr(u32)]
 enum HiRegBxOperation {
@@ -61,7 +69,7 @@ pub fn decode_hi_reg_branch_exchange(opcode: u32) -> Instruction {
         HiRegBxOperation::Move => Instruction::DataProcessing(DataProcessingInstruction::new(
             false,
             rs,
-            Operand::Register(rd),
+            Operand::Register(rs),
             Some(rd as u32),
             DataProcessingOperation::Move,
         )),
