@@ -8,8 +8,9 @@ use super::thumb::LongBranchWithLinkInstruction;
 
 use super::arm::{
     BlockDataTransferInstruction, BranchAndExchangeInstruction, BranchInstruction,
-    DataProcessingInstruction, PsrTransferMrsInstruction, PsrTransferMsrInstruction,
-    SingleDataSwapInstruction, SingleDataTransferInstruction, SoftwareInterruptInstruction,
+    DataProcessingInstruction, HalfwordDataTransferRegInstruction, PsrTransferMrsInstruction,
+    PsrTransferMsrInstruction, SingleDataSwapInstruction, SingleDataTransferInstruction,
+    SoftwareInterruptInstruction,
 };
 
 pub trait InstructionExecutor {
@@ -29,6 +30,7 @@ pub enum Instruction {
     PsrTransferMrs(PsrTransferMrsInstruction),
     PsrTransferMsr(PsrTransferMsrInstruction),
     SingleDataSwap(SingleDataSwapInstruction),
+    HalfwordDataTransfer(HalfwordDataTransferRegInstruction),
 }
 
 pub struct Operation {

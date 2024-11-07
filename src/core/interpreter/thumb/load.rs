@@ -1,5 +1,5 @@
 use crate::core::interpreter::{
-    arm::SingleDataTransferInstruction,
+    arm::{HalfwordDataOffset, HalfwordDataTransferRegInstruction, SingleDataTransferInstruction},
     instruction::{Instruction, Operand},
 };
 
@@ -66,8 +66,21 @@ pub fn decode_sp_relative_load_store(opcode: u32) -> Instruction {
 }
 
 pub fn decode_load_store_halfword(opcode: u32) -> Instruction {
-    let load = (opcode >> 11) & 1 > 0;
+    let halfword = (opcode >> 11) & 1 > 0;
+    let sign = (opcode >> 10) & 1 > 0;
+    let ro = (opcode >> 6) & 0b111;
     let rb = (opcode >> 3) & 0b111;
     let rd = opcode & 0b111;
 
+    Instruction::HalfwordDataTransfer(HalfwordDataTransferRegInstruction::new(
+        true,
+        true,
+        false,
+        sign || halfword,
+        sign,
+        halfword,
+        rb,
+        HalfwordDataOffset::Register(ro),
+        rd,
+    ))
 }

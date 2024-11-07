@@ -23,7 +23,7 @@ pub const PSR_TRANSFER_MSR_FORMAT: u32 = 0b0000_0001_0010_0000_1111_0000_0000_00
 pub const SINGLE_DATA_SWAP_MASK: u32 = 0b0000_1111_1000_0000_0000_1111_1111_0000;
 pub const SINGLE_DATA_SWAP_FORMAT: u32 = 0b0000_0001_0000_0000_0000_0000_1001_0000;
 
-pub const HALFWORD_DATA_TRANSFER_REG_MASK: u32 = 0b0000_1110_0100_0000_0000_1111_1001_0000;
+pub const HALFWORD_DATA_TRANSFER_REG_MASK: u32 = 0b0000_1110_0000_0000_0000_1111_1001_0000;
 pub const HALFWORD_DATA_TRANSFER_REG_FORMAT: u32 = 0b0000_0000_0000_0000_0000_0000_1001_0000;
 
 pub struct SingleDataTransferInstruction {
@@ -512,6 +512,11 @@ impl InstructionExecutor for SingleDataSwapInstruction {
     }
 }
 
+pub enum HalfwordDataOffset {
+    Register(u32),
+    Offset(u8),
+}
+
 pub struct HalfwordDataTransferRegInstruction {
     pre_index: bool,
     up: bool,
@@ -520,11 +525,35 @@ pub struct HalfwordDataTransferRegInstruction {
     signed: bool,
     halfword: bool,
     base_register: u32,
-    offset_register: u32,
+    offset: HalfwordDataOffset,
     destination_register: u32,
 }
 
 impl HalfwordDataTransferRegInstruction {
+    pub fn new(
+        pre_index: bool,
+        up: bool,
+        write_back: bool,
+        load: bool,
+        signed: bool,
+        halfword: bool,
+        base_register: u32,
+        offset: HalfwordDataOffset,
+        destination_register: u32,
+    ) -> Self {
+        Self {
+            pre_index,
+            up,
+            write_back,
+            load,
+            signed,
+            halfword,
+            base_register,
+            offset,
+            destination_register,
+        }
+    }
+
     pub fn decode(opcode: u32) -> Self {
         Self {
             pre_index: opcode & (1 << 24) > 0,
@@ -534,16 +563,91 @@ impl HalfwordDataTransferRegInstruction {
             signed: opcode & (1 << 6) > 0,
             halfword: opcode & (1 << 5) > 0,
             base_register: (opcode >> 16) & 0xF,
-            offset_register: opcode & 0xF,
+            offset: if (opcode >> 22) > 0 {
+                HalfwordDataOffset::Offset(((opcode & 0xF) | ((opcode >> 4) & 0xF0)) as u8)
+            } else {
+                HalfwordDataOffset::Register(opcode & 0xF)
+            },
             destination_register: (opcode >> 12) & 0xF,
         }
     }
 }
 
 impl InstructionExecutor for HalfwordDataTransferRegInstruction {
-    fn execute(&self, registers: &mut RegisterBank, bus: &mut Bus) -> Result<usize, CoreError> {}
+    fn execute(&self, registers: &mut RegisterBank, bus: &mut Bus) -> Result<usize, CoreError> {
+        let mut address = registers.reg(self.base_register as usize);
+        let offset = match self.offset {
+            HalfwordDataOffset::Register(reg) => registers.reg(reg as usize),
+            HalfwordDataOffset::Offset(offset) => offset as u32,
+        };
 
-    fn mnemonic(&self) -> String {}
+        if self.pre_index {
+            if self.up {
+                address = address.wrapping_add(offset)
+            } else {
+                address = address.wrapping_sub(offset)
+            }
+        }
 
-    fn description(&self, registers: &RegisterBank, bus: &mut Bus) -> String {}
+        if self.load {
+            *registers.reg_mut(self.destination_register as usize) = if self.halfword {
+                if self.signed {
+                    bus.read_word(address)? as i16 as i32 as u32
+                } else {
+                    bus.read_word(address)? as u32
+                }
+            } else {
+                bus.read_byte(address)? as i8 as i32 as u32
+            }
+        } else {
+            bus.write_word(
+                address,
+                registers.reg(self.destination_register as usize) as u16,
+            )?
+        }
+
+        if self.pre_index {
+            if self.up {
+                address = address.wrapping_add(offset)
+            } else {
+                address = address.wrapping_sub(offset)
+            }
+        }
+
+        if self.write_back {
+            *registers.reg_mut(self.base_register as usize) = address;
+        }
+
+        Ok(1)
+    }
+
+    fn mnemonic(&self) -> String {
+        let mut m = (if self.load { "ldr" } else { "str" }).to_string();
+        if self.signed {
+            m += "s"
+        }
+        if self.halfword {
+            m += "h"
+        }
+        m
+    }
+
+    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
+        let mut desc = format!("[r{}", self.base_register).to_string();
+        desc += &match self.offset {
+            HalfwordDataOffset::Register(reg) => format!(", {reg}]"),
+            HalfwordDataOffset::Offset(offset) => {
+                if offset > 0 {
+                    format!(", #{:X}]", offset)
+                } else {
+                    "]".to_string()
+                }
+            }
+        };
+        if self.write_back {
+            desc += "!";
+        }
+
+        desc
+    }
 }

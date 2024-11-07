@@ -11,8 +11,9 @@ use register::RegisterBank;
 use status::InstructionMode;
 use thumb::{
     decode_add_offset_stack_pointer, decode_add_subtract, decode_alu_operations,
-    decode_conditional_branch, decode_hi_reg_branch_exchange, decode_move_shifted_register,
-    decode_push_pop_registers, decode_sp_relative_load_store, LongBranchWithLinkInstruction,
+    decode_conditional_branch, decode_hi_reg_branch_exchange, decode_load_store_halfword,
+    decode_move_shifted_register, decode_push_pop_registers, decode_sp_relative_load_store,
+    LongBranchWithLinkInstruction,
 };
 
 use super::{Bus, CoreError};
@@ -98,6 +99,12 @@ impl Interpreter {
                     unimplemented!()
                 } else if (fetched_instruction & arm::MULTIPLY_MASK) == arm::MULTIPLY_LONG_FORMAT {
                     unimplemented!()
+                } else if (fetched_instruction & arm::HALFWORD_DATA_TRANSFER_REG_MASK)
+                    == arm::HALFWORD_DATA_TRANSFER_REG_FORMAT
+                {
+                    Instruction::HalfwordDataTransfer(
+                        arm::HalfwordDataTransferRegInstruction::decode(fetched_instruction),
+                    )
                 } else if (fetched_instruction & arm::PSR_TRANSFER_MRS_MASK)
                     == arm::PSR_TRANSFER_MRS_FORMAT
                 {
@@ -172,7 +179,7 @@ impl Interpreter {
                 } else if (fetched_instruction & thumb::LOAD_STORE_HALFWORD_MASK)
                     == thumb::LOAD_STORE_HALFWORD_FORMAT
                 {
-                    unimplemented!()
+                    decode_load_store_halfword(fetched_instruction)
                 } else if (fetched_instruction & thumb::SP_RELATIVE_LOAD_STORE_MASK)
                     == thumb::SP_RELATIVE_LOAD_STORE_FORMAT
                 {
@@ -239,6 +246,7 @@ impl Interpreter {
                 Instruction::PsrTransferMsr(d) => d,
                 Instruction::SingleDataSwap(d) => d,
                 Instruction::LongBranchWithLink(d) => d,
+                Instruction::HalfwordDataTransfer(d) => d,
             };
 
             self.log_instruction(
