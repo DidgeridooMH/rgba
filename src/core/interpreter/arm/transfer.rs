@@ -267,6 +267,12 @@ impl InstructionExecutor for BlockDataTransferInstruction {
             base_register - 4 * (self.number_of_registers - 1)
         };
 
+        // TODO: This is a janky hack for the case of pre-index decrementing. THis definitely needs
+        // to have a better implementation.
+        if !self.increment && self.pre_index {
+            base_address = base_address - 4;
+        }
+
         let register_bank =
             if (((self.registers & (1 << 15)) == 0) || !self.load) && self.psr_and_force_user {
                 CpuMode::User
@@ -279,22 +285,27 @@ impl InstructionExecutor for BlockDataTransferInstruction {
         } else {
             base_address
         };
+
+        if !self.increment && self.pre_index {
+            base_address = base_address.wrapping_sub(4);
+        }
+
         for i in 0..16 {
             if (1 << i) & self.registers > 0 {
                 if self.pre_index {
-                    base_address += 4;
+                    base_address = base_address.wrapping_add(4);
                 }
 
                 if self.load {
                     *registers.reg_with_mode_mut(i as usize, register_bank) =
-                        bus.read_dword(base_register).unwrap();
+                        bus.read_dword(base_address).unwrap();
 
                     if i == 15 && self.psr_and_force_user {
                         registers.cpsr = registers.spsr();
                     }
                 } else {
                     bus.write_dword(
-                        base_register,
+                        base_address,
                         registers.reg_with_mode(i as usize, register_bank),
                     )?;
                 }

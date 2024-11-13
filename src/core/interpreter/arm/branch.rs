@@ -48,8 +48,12 @@ impl InstructionExecutor for BranchInstruction {
         if let Some(_) = self.link { "bl" } else { "b" }.into()
     }
 
-    fn description(&self, _registers: &RegisterBank, _bus: &mut Bus) -> String {
-        print_offset_as_immediate(self.offset)
+    fn description(&self, registers: &RegisterBank, _bus: &mut Bus) -> String {
+        format!(
+            "{} (=${:X})",
+            print_offset_as_immediate(self.offset),
+            (registers.pc() as i32 + self.offset as i32) as u32
+        )
     }
 }
 

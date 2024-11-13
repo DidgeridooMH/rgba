@@ -8,3 +8,5 @@ mod multiply;
 pub use multiply::*;
 mod transfer;
 pub use transfer::*;
+
+mod tests;
