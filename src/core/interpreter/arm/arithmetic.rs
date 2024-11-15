@@ -75,7 +75,7 @@ impl DataProcessingInstruction {
 
     pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
         let operand = if opcode & (1 << 25) > 0 {
-            Operand::Immediate(rotated_immediate(opcode))
+            Operand::Immediate((rotated_immediate(opcode), false))
         } else {
             match Shift::from_opcode(opcode) {
                 Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
@@ -108,7 +108,7 @@ impl DataProcessingInstruction {
 impl InstructionExecutor for DataProcessingInstruction {
     fn execute(&self, registers: &mut RegisterBank, _bus: &mut Bus) -> Result<usize, CoreError> {
         let source = registers.reg(self.source_register_index as usize);
-        let operand = self.operand.value(registers);
+        let (operand, carry) = self.operand.value(registers);
         let (result, overflow) = match self.operation {
             DataProcessingOperation::And => (source & operand, false),
             DataProcessingOperation::Test => (source & operand, false),
@@ -161,9 +161,31 @@ impl InstructionExecutor for DataProcessingInstruction {
 
         // Check if condition code should be updated.
         if self.update_conditions {
-            registers.cpsr.overflow =
-                ((source ^ operand) & 0x80000000 == 0) && ((source ^ result) & 0x80000000 != 0);
-            registers.cpsr.carry = overflow;
+            match self.operation {
+                DataProcessingOperation::And
+                | DataProcessingOperation::ExclusiveOr
+                | DataProcessingOperation::Test
+                | DataProcessingOperation::TestEqual
+                | DataProcessingOperation::Or
+                | DataProcessingOperation::Move
+                | DataProcessingOperation::AndNot
+                | DataProcessingOperation::MoveNegate => registers.cpsr.carry = carry,
+                DataProcessingOperation::Subtract
+                | DataProcessingOperation::ReverseSubtract
+                | DataProcessingOperation::SubtractWithCarry
+                | DataProcessingOperation::ReverseSubtractWithCarry
+                | DataProcessingOperation::Compare
+                | DataProcessingOperation::CompareNegate => {
+                    registers.cpsr.overflow = ((source ^ operand) & 0x80000000 != 0)
+                        && ((source ^ result) & 0x80000000 == 0);
+                    registers.cpsr.carry = overflow;
+                }
+                DataProcessingOperation::Add | DataProcessingOperation::AddWithCarry => {
+                    registers.cpsr.overflow = ((source ^ operand) & 0x80000000 == 0)
+                        && ((source ^ result) & 0x80000000 != 0);
+                    registers.cpsr.carry = overflow;
+                }
+            }
             registers.cpsr.zero = result == 0;
             registers.cpsr.signed = result & (1 << 31) > 0;
         }

@@ -9,4 +9,5 @@ pub use multiply::*;
 mod transfer;
 pub use transfer::*;
 
+#[cfg(test)]
 mod tests;

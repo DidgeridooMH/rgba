@@ -44,7 +44,7 @@ pub fn decode_add_offset_stack_pointer(opcode: u32) -> Instruction {
     Instruction::DataProcessing(DataProcessingInstruction::new(
         false,
         13,
-        Operand::Immediate(offset),
+        Operand::Immediate((offset, false)),
         Some(13),
         if sign {
             DataProcessingOperation::Subtract

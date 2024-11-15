@@ -41,16 +41,16 @@ pub struct Operation {
 }
 
 pub enum Operand {
-    Immediate(u32),
+    Immediate((u32, bool)),
     Register(u32),
     RegisterShifted(Shift),
 }
 
 impl Operand {
-    pub fn value(&self, registers: &RegisterBank) -> u32 {
+    pub fn value(&self, registers: &RegisterBank) -> (u32, bool) {
         match self {
             Operand::Immediate(value) => *value,
-            Operand::Register(index) => registers.reg(*index as usize),
+            Operand::Register(index) => (registers.reg(*index as usize), false),
             Operand::RegisterShifted(shift) => shift.shift(registers),
         }
     }
@@ -59,7 +59,7 @@ impl Operand {
 impl Display for Operand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Operand::Immediate(value) => write!(f, "#0x{:X}", value),
+            Operand::Immediate(value) => write!(f, "#0x{:X}", value.0),
             Operand::Register(value) => write!(f, "r{}", value),
             Operand::RegisterShifted(shift) => write!(f, "{}", shift),
         }

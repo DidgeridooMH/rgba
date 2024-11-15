@@ -62,12 +62,41 @@ impl ShiftType {
         }
     }
 
-    pub fn shift(&self, operand: u32, shift_amount: u32) -> u32 {
+    pub fn shift(&self, operand: u32, shift_amount: u32, old_carry: bool) -> (u32, bool) {
         match self {
-            ShiftType::LogicalLeft => operand << shift_amount,
-            ShiftType::LogicalRight => operand >> shift_amount,
-            ShiftType::ArithmeticRight => ((operand as i32) >> shift_amount) as u32,
-            ShiftType::RotateRight => operand.rotate_right(shift_amount),
+            ShiftType::LogicalLeft => {
+                let carry = if shift_amount > 0 {
+                    ((operand << shift_amount - 1) & (1 << 31)) > 0
+                } else {
+                    false
+                };
+                (operand << shift_amount, carry)
+            }
+            ShiftType::LogicalRight => {
+                let shift_amount = if shift_amount > 0 { shift_amount } else { 32 };
+                (
+                    operand >> shift_amount,
+                    (operand & (1 << shift_amount - 1)) > 0,
+                )
+            }
+            ShiftType::ArithmeticRight => {
+                let shift_amount = if shift_amount > 0 { shift_amount } else { 32 };
+                (
+                    ((operand as i32) >> shift_amount) as u32,
+                    (operand & (1 << shift_amount - 1)) > 0,
+                )
+            }
+            ShiftType::RotateRight => {
+                if shift_amount > 0 {
+                    (
+                        operand.rotate_right(shift_amount),
+                        (operand & (1 << shift_amount - 1)) > 0,
+                    )
+                } else {
+                    let old_carry = if old_carry { 1 } else { 0 };
+                    (operand.rotate_right(1) | (old_carry << 31), operand & 1 > 0)
+                }
+            }
         }
     }
 }
@@ -100,7 +129,7 @@ impl Shift {
         }
     }
 
-    pub fn shift(&self, registers: &RegisterBank) -> u32 {
+    pub fn shift(&self, registers: &RegisterBank) -> (u32, bool) {
         match self {
             Shift::Register(shift) => shift.shift(registers),
             Shift::Immediate(shift) => shift.shift(registers),
@@ -109,19 +138,21 @@ impl Shift {
 }
 
 impl ImmediateShift {
-    pub fn shift(&self, registers: &RegisterBank) -> u32 {
+    pub fn shift(&self, registers: &RegisterBank) -> (u32, bool) {
         self.shift_type.shift(
             registers.reg(self.base_register as usize),
             self.shift_amount,
+            registers.cpsr.carry,
         )
     }
 }
 
 impl RegisterShift {
-    pub fn shift(&self, registers: &RegisterBank) -> u32 {
+    pub fn shift(&self, registers: &RegisterBank) -> (u32, bool) {
         self.shift_type.shift(
             registers.reg(self.base_register as usize),
             registers.reg(self.shift_register as usize),
+            registers.cpsr.carry,
         )
     }
 }

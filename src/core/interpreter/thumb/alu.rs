@@ -30,7 +30,7 @@ enum McasOperation {
 pub fn decode_mcas_immediate(opcode: u32) -> Instruction {
     let operation = McasOperation::try_from((opcode >> 11) & 0b11).unwrap();
     let rd = (opcode >> 8) & 0b111;
-    let imm8 = Operand::Immediate(opcode & 0xFF);
+    let imm8 = Operand::Immediate((opcode & 0xFF, false));
 
     match operation {
         McasOperation::Move => Instruction::DataProcessing(DataProcessingInstruction::new(
@@ -71,7 +71,7 @@ pub fn decode_add_subtract(opcode: u32) -> Instruction {
     let rn = (opcode >> 6) & 0b111;
 
     let operand = if (opcode >> 10) & 1 > 0 {
-        Operand::Immediate(rn as u32)
+        Operand::Immediate((rn as u32, false))
     } else {
         Operand::Register(rn)
     };
@@ -156,7 +156,10 @@ pub fn decode_alu_operations(opcode: u32) -> Instruction {
             ))),
         ),
         AluOperation::Tst => (DataProcessingOperation::Test, Operand::Register(rs)),
-        AluOperation::Neg => (DataProcessingOperation::Subtract, Operand::Immediate(0)),
+        AluOperation::Neg => (
+            DataProcessingOperation::Subtract,
+            Operand::Immediate((0, false)),
+        ),
         AluOperation::Cmp => (DataProcessingOperation::Compare, Operand::Register(rs)),
         AluOperation::Cmn => (
             DataProcessingOperation::CompareNegate,

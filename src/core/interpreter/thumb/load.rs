@@ -44,7 +44,7 @@ pub fn decode_pc_relative_load(opcode: u32) -> Instruction {
     Instruction::SingleDataTransfer(SingleDataTransferInstruction::new(
         rd,
         15,
-        Operand::Immediate(word8 as u32),
+        Operand::Immediate((word8 as u32, false)),
         true,
         false,
         false,
@@ -61,7 +61,7 @@ pub fn decode_sp_relative_load_store(opcode: u32) -> Instruction {
     Instruction::SingleDataTransfer(SingleDataTransferInstruction::new(
         rd,
         13,
-        Operand::Immediate(word8 as u32),
+        Operand::Immediate((word8 as u32, false)),
         load,
         false,
         false,

@@ -70,7 +70,7 @@ impl SingleDataTransferInstruction {
                 Shift::Register(shift) => Operand::RegisterShifted(Shift::Register(shift)),
             }
         } else {
-            Operand::Immediate(opcode & 0xFFF)
+            Operand::Immediate((opcode & 0xFFF, false))
         };
 
         Self {
@@ -103,9 +103,9 @@ impl SingleDataTransferInstruction {
     fn offset_address(&self, address: u32, registers: &RegisterBank) -> u32 {
         let offset = self.offset.value(registers);
         if self.up {
-            address.wrapping_add(offset)
+            address.wrapping_add(offset.0)
         } else {
-            address.wrapping_sub(offset)
+            address.wrapping_sub(offset.0)
         }
     }
 }
@@ -411,7 +411,7 @@ pub struct PsrTransferMsrInstruction {
 impl PsrTransferMsrInstruction {
     pub fn decode(registers: &mut RegisterBank, opcode: u32) -> Self {
         let operand = if opcode & (1 << 25) > 0 {
-            Operand::Immediate(opcode & 0xFFF)
+            Operand::Immediate((opcode & 0xFFF, false))
         } else {
             match Shift::from_opcode(opcode) {
                 Shift::Immediate(shift) => Operand::Immediate(shift.shift(registers)),
@@ -438,7 +438,7 @@ impl InstructionExecutor for PsrTransferMsrInstruction {
             &mut registers.cpsr
         };
 
-        let psr_operand = ProgramStatusRegister::from_u32(operand);
+        let psr_operand = ProgramStatusRegister::from_u32(operand.0);
         if self.write_flags {
             psr.zero = psr_operand.zero;
             psr.signed = psr_operand.signed;

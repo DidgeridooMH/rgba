@@ -65,10 +65,7 @@ impl Gba {
         // TODO: Implement async logging.
         cpu.logging_enabled = true;
 
-        Ok(Self {
-            cpu,
-            bus,
-        })
+        Ok(Self { cpu, bus })
     }
 
     pub fn emulate(&mut self, cycles: Option<usize>) -> Result<()> {
@@ -87,13 +84,11 @@ impl Gba {
             }
         }
         let elapsed = start.elapsed();
-        let speed =  cycles_done as f64 / elapsed.as_secs_f64();
+        let speed = cycles_done as f64 / elapsed.as_secs_f64();
 
         println!("Cycles completed: {cycles_done}");
         println!("Elapsed time: {}ms", elapsed.as_millis());
-        println!(
-            "Instructions per second: {speed}",
-        );
+        println!("Instructions per second: {speed}",);
 
         const NECESSARY_SPEED: f64 = (16.78 * 1e6) / 4.0;
         if speed < NECESSARY_SPEED {
@@ -101,7 +96,6 @@ impl Gba {
                 "Warning: Emulation speed is too slow. Speed: {speed:.0} Instructions per second, Necessary speed: {NECESSARY_SPEED:.0} Instructions per second"
             );
         }
-
 
         Ok(())
     }
