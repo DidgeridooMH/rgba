@@ -73,12 +73,7 @@ pub fn decode_sp_relative_load_store(opcode: u32) -> Instruction {
 
 pub fn decode_load_store_halfword(opcode: u32) -> Instruction {
     let load = (opcode >> 11) & 1 > 0;
-    let halfword = (opcode >> 12) & 1 > 0;
-    let offset = if halfword {
-        ((opcode >> 6) & 0b11111) << 2
-    } else {
-        (opcode >> 6) & 0b11111
-    };
+    let offset = ((opcode >> 6) & 0b11111) << 1;
     let rb = (opcode >> 3) & 0b111;
     let rd = opcode & 0b111;
 
@@ -88,7 +83,7 @@ pub fn decode_load_store_halfword(opcode: u32) -> Instruction {
         false,
         load,
         false,
-        halfword,
+        true,
         rb,
         HalfwordDataOffset::Offset(offset as u8),
         rd,
