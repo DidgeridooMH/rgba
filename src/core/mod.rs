@@ -13,7 +13,7 @@ mod lcd;
 
 use anyhow::{anyhow, Result};
 use lcd::Lcd;
-use std::{cell::RefCell, fmt, rc::Rc, time::Instant};
+use std::{cell::RefCell, fmt, path, rc::Rc, time::Instant};
 
 use memory::{system_io::SystemIoFlags, wram::Wram};
 
@@ -42,11 +42,9 @@ pub struct Gba {
 }
 
 impl Gba {
-    pub fn new(bios_filename: &str) -> Result<Self> {
+    pub fn new() -> Self {
         let mut bus = Bus::default();
 
-        let bios = Bios::new(bios_filename)?;
-        bus.register_region(0..=0x3FFF, Rc::new(RefCell::new(bios)));
         bus.register_region(0x4000000..=0x4000056, Rc::new(RefCell::new(Lcd::default())));
         bus.register_region(
             0x4000200..=0x4700000,
@@ -65,7 +63,13 @@ impl Gba {
         // TODO: Implement async logging.
         cpu.logging_enabled = true;
 
-        Ok(Self { cpu, bus })
+        Self { cpu, bus }
+    }
+
+    pub fn set_bios(&mut self, bios_path: &str) -> Result<()> {
+        let bios = Rc::new(RefCell::new(Bios::new(bios_path)?));
+        self.bus.register_region(0..=0x3FFF, bios);
+        Ok(())
     }
 
     pub fn emulate(&mut self, cycles: Option<usize>) -> Result<()> {

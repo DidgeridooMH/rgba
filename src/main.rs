@@ -1,5 +1,5 @@
 mod core;
-use crate::core::Gba;
+mod gui;
 
 use anyhow::Result;
 use clap::Parser;
@@ -8,16 +8,18 @@ use clap::Parser;
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(short, long)]
-    bios: String,
-    #[arg(short, long)]
     cycles: Option<usize>,
 }
 
-fn main() -> Result<()> {
-    let args = Args::parse();
 
-    let mut gba = Gba::new(&args.bios)?;
-    gba.emulate(args.cycles)?;
+fn main() -> Result<()> {
+    let _args = Args::parse();
+
+    let main_window = gui::MainWindow::default();
+    main_window.show()?;
+
+    //    let mut gba = Gba::new(&args.bios)?;
+    //    gba.emulate(args.cycles)?;
 
     Ok(())
 }
