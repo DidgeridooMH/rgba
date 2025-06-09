@@ -11,7 +11,7 @@ use game_window::GameWindow;
 mod debugger_window;
 use debugger_window::DebuggerWindow;
 
-use crate::core::Gba;
+use crate::core::{CpuMode, Gba, InstructionMode};
 
 #[derive(Default, Serialize, Deserialize)]
 struct Settings {
@@ -39,7 +39,10 @@ impl Settings {
 
         let local_config_dir = Path::new("settings.json");
         if local_config_dir.exists() {
-            println!("Loading settings from local file: {}", local_config_dir.display());
+            println!(
+                "Loading settings from local file: {}",
+                local_config_dir.display()
+            );
             let mut file = File::open(local_config_dir)?;
             let mut buf = Vec::new();
             let length = file.read_to_end(&mut buf)?;
@@ -59,6 +62,8 @@ pub enum Message {
     WindowClosed(window::Id),
     OpenRom,
     Exit,
+    SetInstructionMode(InstructionMode),
+    SetCpuMode(CpuMode),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -176,8 +181,7 @@ impl Application {
 
                 Task::none()
             }
-            Message::OpenRom =>
-            {
+            Message::OpenRom => {
                 if let Some(bios_path) = &self.settings.bios_path {
                     self.gba.set_bios(&bios_path).unwrap_or_else(|e| {
                         eprintln!("Failed to load BIOS: {}", e);
@@ -187,8 +191,16 @@ impl Application {
                     });
                 }
                 Task::none()
-            },
-            Message::Exit => iced::exit()
+            }
+            Message::Exit => iced::exit(),
+            Message::SetInstructionMode(mode) => {
+                println!("Setting instruction mode to: {:?}", mode);
+                Task::none()
+            }
+            Message::SetCpuMode(mode) => {
+                println!("Setting CPU mode to: {:?}", mode);
+                Task::none()
+            }
         }
     }
 

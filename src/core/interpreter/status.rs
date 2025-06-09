@@ -1,4 +1,4 @@
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, Eq, PartialEq, Debug)]
 #[repr(u32)]
 pub enum CpuMode {
     #[default]
@@ -25,7 +25,7 @@ impl CpuMode {
     }
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 #[repr(u32)]
 pub enum InstructionMode {
     #[default]

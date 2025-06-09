@@ -7,10 +7,13 @@ mod status;
 mod thumb;
 
 use instruction::{Instruction, InstructionExecutor, Operation};
-use register::RegisterBank;
-use status::InstructionMode;
+pub use register::RegisterBank;
+pub use status::{CpuMode, InstructionMode};
 use thumb::{
-    decode_add_offset_stack_pointer, decode_add_subtract, decode_alu_operations, decode_conditional_branch, decode_hi_reg_branch_exchange, decode_load_store_halfword, decode_load_store_immediate_offset, decode_move_shifted_register, decode_push_pop_registers, decode_sp_relative_load_store, decode_unconditional_branch, LongBranchWithLinkInstruction
+    decode_add_offset_stack_pointer, decode_add_subtract, decode_alu_operations,
+    decode_conditional_branch, decode_hi_reg_branch_exchange, decode_load_store_halfword,
+    decode_load_store_immediate_offset, decode_move_shifted_register, decode_push_pop_registers,
+    decode_sp_relative_load_store, decode_unconditional_branch, LongBranchWithLinkInstruction,
 };
 
 use super::{Bus, CoreError};
