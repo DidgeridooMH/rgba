@@ -13,7 +13,7 @@ mod lcd;
 
 use anyhow::{anyhow, Result};
 use lcd::Lcd;
-use std::{cell::RefCell, fmt, path, rc::Rc, time::Instant};
+use std::{cell::RefCell, fmt, rc::Rc, time::Instant};
 
 use memory::{system_io::SystemIoFlags, wram::Wram};
 

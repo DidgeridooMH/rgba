@@ -1,4 +1,4 @@
-use super::Addressable;
+use super::{Addressable, CoreError};
 use anyhow::{anyhow, Result};
 use std::fs;
 
@@ -24,7 +24,8 @@ impl Addressable for Bios {
         self.0[address as usize]
     }
 
-    fn write_byte(&mut self, address: u32, data: u8) {
-        unimplemented!("BIOS should not be written to. ({address}) <= {data}")
+    fn write_byte(&mut self, address: u32, data: u8) -> Result<(), CoreError> {
+        println!("BIOS should not be written to. ({address}) <= {data}");
+        Err(CoreError::InvalidRegion(address))
     }
 }

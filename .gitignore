@@ -1,3 +1,4 @@
 /target
 *.bin
 *.gba
+settings.json

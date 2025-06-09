@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs::File, io::Read};
+use std::{collections::BTreeMap, fs::File, io::Read, path::Path};
 
 use anyhow::Result;
 use dirs::config_dir;
@@ -10,6 +10,8 @@ use game_window::GameWindow;
 
 mod debugger_window;
 use debugger_window::DebuggerWindow;
+
+use crate::core::Gba;
 
 #[derive(Default, Serialize, Deserialize)]
 struct Settings {
@@ -24,14 +26,27 @@ impl Settings {
 
             if !app_dir.exists() {
                 std::fs::create_dir_all(&app_dir)?;
+                println!("Created settings directory at: {}", app_dir.display());
             }
 
             if let Ok(mut file) = File::open(&settings_file) {
+                println!("Loading settings from: {}", settings_file.display());
                 let mut buf = Vec::new();
                 let length = file.read_to_end(&mut buf)?;
                 return Ok(serde_json::from_slice(&buf[..length])?);
             }
         }
+
+        let local_config_dir = Path::new("settings.json");
+        if local_config_dir.exists() {
+            println!("Loading settings from local file: {}", local_config_dir.display());
+            let mut file = File::open(local_config_dir)?;
+            let mut buf = Vec::new();
+            let length = file.read_to_end(&mut buf)?;
+            return Ok(serde_json::from_slice(&buf[..length])?);
+        }
+
+        println!("No settings file found, using default settings.");
 
         Ok(Settings::default())
     }
@@ -42,11 +57,12 @@ pub enum Message {
     OpenWindow(WindowClass),
     WindowOpened((window::Id, WindowClass)),
     WindowClosed(window::Id),
+    OpenRom,
     Exit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum WindowClass {
+pub(crate) enum WindowClass {
     Game,
     Debugger,
 }
@@ -60,27 +76,9 @@ pub struct Application {
     windows: BTreeMap<window::Id, Box<dyn Window>>,
     game_window: Option<window::Id>,
     debugger_window: Option<window::Id>,
+    gba: Gba,
+    settings: Settings,
 }
-
-/*impl Default for MainWindow {
-    fn default() -> Self {
-        let mut gba = Gba::new();
-
-        let settings = if let Ok(settings) = Settings::load() {
-            settings
-        } else {
-            println!("Failed to load settings, using default settings");
-            Settings::default()
-        };
-
-        if let Some(bios_path) = &settings.bios_path {
-            // TODO: This shouldn't load right away. Only when the emulation is started
-            gba.set_bios(bios_path).unwrap();
-        }
-
-        Self { gba, settings }
-    }
-}*/
 
 impl Application {
     pub fn new() -> (Self, Task<Message>) {
@@ -89,11 +87,18 @@ impl Application {
             ..Default::default()
         });
 
+        let settings = Settings::load().unwrap_or_else(|_| {
+            println!("Failed to load settings, using default settings");
+            Settings::default()
+        });
+
         (
             Self {
                 windows: BTreeMap::new(),
                 game_window: None,
                 debugger_window: None,
+                gba: Gba::new(),
+                settings,
             },
             open.map(|id| Message::WindowOpened((id, WindowClass::Game))),
         )
@@ -109,32 +114,6 @@ impl Application {
         self.windows
             .get(&window_id)
             .map_or(horizontal_space().into(), |window| window.view())
-
-        //let id = Task::perform(window::get_latest());
-
-        //if id {
-        //let menu_template = |items| Menu::new(items).max_width(180.0).offset(5.0).spacing(0.0);
-
-        //#[rustfmt::skip]
-        //    let top_bar = menu_bar!(
-        //        (base_button("File"), {
-        //            menu_template(menu_items!(
-        //                (menu_button("Open ROM"))
-        //                (menu_button("Exit").on_press(Message::Exit))
-        //            ))
-        //            .width(160.0)
-        //        })
-        //        (base_button("Tools"), {
-        //            menu_template(menu_items!(
-        //                (menu_button("Debugger").on_press(Message::OpenDebugger))
-        //            ))
-        //            .width(160.0)
-        //        })
-        //    );
-        //top_bar.into()
-        //} else {
-        //   iced::Element::new(text("Debugger"))
-        //}
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -197,6 +176,18 @@ impl Application {
 
                 Task::none()
             }
+            Message::OpenRom =>
+            {
+                if let Some(bios_path) = &self.settings.bios_path {
+                    self.gba.set_bios(&bios_path).unwrap_or_else(|e| {
+                        eprintln!("Failed to load BIOS: {}", e);
+                    });
+                    self.gba.emulate(None).unwrap_or_else(|e| {
+                        eprintln!("Failed to start emulation: {}", e);
+                    });
+                }
+                Task::none()
+            },
             Message::Exit => iced::exit()
         }
     }

@@ -1,4 +1,4 @@
-use crate::core::Addressable;
+use crate::core::{Addressable, CoreError};
 
 pub struct Wram {
     start_address: u32,
@@ -23,8 +23,9 @@ impl Addressable for Wram {
         self.container[self.virtual_address(address)]
     }
 
-    fn write_byte(&mut self, address: u32, data: u8) {
+    fn write_byte(&mut self, address: u32, data: u8) -> Result<(), CoreError> {
         let address = self.virtual_address(address);
         self.container[address] = data;
+        Ok(())
     }
 }

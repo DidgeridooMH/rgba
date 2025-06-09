@@ -20,8 +20,5 @@ fn main() -> Result<()> {
         .subscription(Application::subscription)
         .run_with(Application::new)?;
 
-    //    let mut gba = Gba::new(&args.bios)?;
-    //    gba.emulate(args.cycles)?;
-
     Ok(())
 }

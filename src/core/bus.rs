@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 pub trait Addressable {
     fn read_byte(&mut self, address: u32) -> u8;
-    fn write_byte(&mut self, address: u32, data: u8);
+    fn write_byte(&mut self, address: u32, data: u8) -> Result<(), CoreError>;
 }
 
 pub struct MemoryMapping {
@@ -64,8 +64,7 @@ impl Bus {
     pub fn write_byte(&mut self, address: u32, data: u8) -> Result<(), CoreError> {
         for mapping in &self.regions {
             if mapping.region.contains(&address) {
-                mapping.component.borrow_mut().write_byte(address, data);
-                return Ok(());
+                return mapping.component.borrow_mut().write_byte(address, data);
             }
         }
         Err(CoreError::InvalidRegion(address))
