@@ -1,16 +1,15 @@
-use std::{fs::File, io::Read};
+use std::{collections::BTreeMap, fs::File, io::Read};
 
 use anyhow::Result;
 use dirs::config_dir;
-use iced::{
-    border::Radius,
-    widget::{button, text},
-    Length, Size, Task, Theme,
-};
-use iced_aw::{menu::Item, menu_bar, menu_items, Menu};
+use iced::{widget::horizontal_space, window, Element, Size, Task, Vector};
 use serde::{Deserialize, Serialize};
 
-use crate::core::Gba;
+mod game_window;
+use game_window::GameWindow;
+
+mod debugger_window;
+use debugger_window::DebuggerWindow;
 
 #[derive(Default, Serialize, Deserialize)]
 struct Settings {
@@ -39,16 +38,31 @@ impl Settings {
 }
 
 #[derive(Debug, Clone)]
-enum Message {
+pub enum Message {
+    OpenWindow(WindowClass),
+    WindowOpened((window::Id, WindowClass)),
+    WindowClosed(window::Id),
     Exit,
 }
 
-pub struct MainWindow {
-    gba: Gba,
-    settings: Settings,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum WindowClass {
+    Game,
+    Debugger,
 }
 
-impl Default for MainWindow {
+trait Window {
+    fn title(&self) -> String;
+    fn view(&self) -> Element<Message>;
+}
+
+pub struct Application {
+    windows: BTreeMap<window::Id, Box<dyn Window>>,
+    game_window: Option<window::Id>,
+    debugger_window: Option<window::Id>,
+}
+
+/*impl Default for MainWindow {
     fn default() -> Self {
         let mut gba = Gba::new();
 
@@ -64,54 +78,130 @@ impl Default for MainWindow {
             gba.set_bios(bios_path).unwrap();
         }
 
-        Self {
-            gba,
-            settings,
-        }
+        Self { gba, settings }
     }
-}
+}*/
 
-impl MainWindow {
-    pub fn show(&self) -> iced::Result {
-        iced::application("RGBA Emulator", Self::update, Self::view)
-            .window_size(Size::new(240.0 * 2.0, 160.0 * 2.0))
-            .run()
-    }
+impl Application {
+    pub fn new() -> (Self, Task<Message>) {
+        let (_id, open) = window::open(window::Settings {
+            size: Size::new(240.0 * 2.0, 160.0 * 2.0),
+            ..Default::default()
+        });
 
-    fn view(&self) -> iced::Element<Message> {
-        let menu_template = |items| Menu::new(items).max_width(180.0).offset(5.0).spacing(0.0);
-
-        #[rustfmt::skip]
-        let top_bar = menu_bar!(
-            (base_button("File"), {
-                menu_template(menu_items!(
-                    (menu_button("Open ROM"))
-                    (menu_button("Exit").on_press(Message::Exit))
-                ))
-                .width(160.0)
-            })
-        );
-        top_bar.into()
+        (
+            Self {
+                windows: BTreeMap::new(),
+                game_window: None,
+                debugger_window: None,
+            },
+            open.map(|id| Message::WindowOpened((id, WindowClass::Game))),
+        )
     }
 
-    fn update(&mut self, message: Message) -> Task<Message> {
+    pub fn title(&self, window: window::Id) -> String {
+        self.windows
+            .get(&window)
+            .map_or("Unknown window".into(), |w| w.title())
+    }
+
+    pub fn view(&self, window_id: window::Id) -> iced::Element<Message> {
+        self.windows
+            .get(&window_id)
+            .map_or(horizontal_space().into(), |window| window.view())
+
+        //let id = Task::perform(window::get_latest());
+
+        //if id {
+        //let menu_template = |items| Menu::new(items).max_width(180.0).offset(5.0).spacing(0.0);
+
+        //#[rustfmt::skip]
+        //    let top_bar = menu_bar!(
+        //        (base_button("File"), {
+        //            menu_template(menu_items!(
+        //                (menu_button("Open ROM"))
+        //                (menu_button("Exit").on_press(Message::Exit))
+        //            ))
+        //            .width(160.0)
+        //        })
+        //        (base_button("Tools"), {
+        //            menu_template(menu_items!(
+        //                (menu_button("Debugger").on_press(Message::OpenDebugger))
+        //            ))
+        //            .width(160.0)
+        //        })
+        //    );
+        //top_bar.into()
+        //} else {
+        //   iced::Element::new(text("Debugger"))
+        //}
+    }
+
+    pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Exit => iced::exit(),
+            Message::OpenWindow(window_class) => {
+                let Some(last_window) = self.windows.keys().last() else {
+                    return Task::none();
+                };
+
+                match window_class {
+                    WindowClass::Game if self.game_window.is_some() => return Task::none(),
+                    WindowClass::Debugger if self.debugger_window.is_some() => return Task::none(),
+                    _ => {}
+                }
+
+                window::get_position(*last_window)
+                    .then(|last_position| {
+                        let position =
+                            last_position.map_or(window::Position::Default, |last_position| {
+                                window::Position::Specific(last_position + Vector::new(20.0, 20.0))
+                            });
+
+                        let (_id, open) = window::open(window::Settings {
+                            position,
+                            ..window::Settings::default()
+                        });
+
+                        open
+                    })
+                    .map(move |id| Message::WindowOpened((id, window_class)))
+            }
+            Message::WindowOpened((id, window_class)) => {
+                match window_class {
+                    WindowClass::Game => {
+                        if self.game_window.is_none() {
+                            self.game_window = Some(id);
+                            self.windows.insert(id, Box::new(GameWindow::new()));
+                        }
+                    }
+                    WindowClass::Debugger => {
+                        if self.debugger_window.is_none() {
+                            self.debugger_window = Some(id);
+                            self.windows.insert(id, Box::new(DebuggerWindow::new()));
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::WindowClosed(id) => {
+                self.windows.remove(&id);
+                if self.windows.is_empty() || self.game_window == Some(id) {
+                    return iced::exit();
+                }
+
+                if self.game_window == Some(id) {
+                    self.game_window = None;
+                } else if self.debugger_window == Some(id) {
+                    self.debugger_window = None;
+                }
+
+                Task::none()
+            }
+            Message::Exit => iced::exit()
         }
     }
-}
 
-fn menu_button_style(theme: &Theme, status: button::Status) -> iced::widget::button::Style {
-    let mut style = button::primary(theme, status);
-    style.border.width = 0.0;
-    style.border.radius = Radius::new(0.0);
-    style
-}
-
-fn base_button(label: &str) -> button::Button<Message, iced::Theme, iced::Renderer> {
-    button(text(label)).style(menu_button_style)
-}
-
-fn menu_button(label: &str) -> button::Button<Message, iced::Theme, iced::Renderer> {
-    base_button(label).width(Length::Fill)
+    pub fn subscription(&self) -> iced::Subscription<Message> {
+        window::close_events().map(Message::WindowClosed)
+    }
 }
