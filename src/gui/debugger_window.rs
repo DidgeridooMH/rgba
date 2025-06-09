@@ -141,12 +141,13 @@ fn titled_view<'a>(
                 border: Border {
                     width: 2.0,
                     radius: 5.0.into(),
-                    color: palette.primary.weak.color,
+                    color: palette.background.weak.color,
                 },
                 ..container::Style::default()
             }
         })
     ]
+    .spacing(2)
     .into()
 }
 
@@ -159,7 +160,7 @@ fn title_label(label: &str) -> iced::Element<Message> {
         .style(|theme: &Theme| {
             let palette = theme.extended_palette();
             text::Style {
-                color: Some(palette.primary.weak.color),
+                color: Some(palette.background.weak.color),
             }
         })
         .into()
