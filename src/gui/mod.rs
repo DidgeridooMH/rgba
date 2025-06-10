@@ -1,4 +1,14 @@
-use std::{collections::BTreeMap, fs::File, io::Read, path::Path};
+use std::{
+    any::Any,
+    collections::BTreeMap,
+    fs::File,
+    io::Read,
+    path::Path,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+};
 
 use anyhow::Result;
 use dirs::config_dir;
@@ -64,6 +74,10 @@ pub enum Message {
     Exit,
     SetInstructionMode(InstructionMode),
     SetCpuMode(CpuMode),
+    ChangeRunningState,
+    StepEmulation,
+    ResetEmulation,
+    EmulationStopped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -72,17 +86,19 @@ pub(crate) enum WindowClass {
     Debugger,
 }
 
-trait Window {
+trait Window: Any {
     fn title(&self) -> String;
     fn view(&self) -> Element<Message>;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 pub struct Application {
     windows: BTreeMap<window::Id, Box<dyn Window>>,
     game_window: Option<window::Id>,
     debugger_window: Option<window::Id>,
-    gba: Gba,
+    gba: Arc<Mutex<Gba>>,
     settings: Settings,
+    emulation_running: Arc<AtomicBool>,
 }
 
 impl Application {
@@ -97,13 +113,21 @@ impl Application {
             Settings::default()
         });
 
+        let mut gba = Gba::new();
+        if let Some(bios_path) = &settings.bios_path {
+            if let Err(e) = gba.set_bios(bios_path) {
+                eprintln!("Failed to load BIOS: {}", e);
+            }
+        }
+
         (
             Self {
                 windows: BTreeMap::new(),
                 game_window: None,
                 debugger_window: None,
-                gba: Gba::new(),
+                gba: Arc::new(Mutex::new(gba)),
                 settings,
+                emulation_running: Arc::new(AtomicBool::new(false)),
             },
             open.map(|id| Message::WindowOpened((id, WindowClass::Game))),
         )
@@ -161,7 +185,10 @@ impl Application {
                     WindowClass::Debugger => {
                         if self.debugger_window.is_none() {
                             self.debugger_window = Some(id);
-                            self.windows.insert(id, Box::new(DebuggerWindow::new()));
+                            self.windows.insert(
+                                id,
+                                Box::new(DebuggerWindow::new(self.emulation_running.clone())),
+                            );
                         }
                     }
                 }
@@ -183,12 +210,13 @@ impl Application {
             }
             Message::OpenRom => {
                 if let Some(bios_path) = &self.settings.bios_path {
-                    self.gba.set_bios(&bios_path).unwrap_or_else(|e| {
-                        eprintln!("Failed to load BIOS: {}", e);
-                    });
-                    self.gba.emulate(None).unwrap_or_else(|e| {
-                        eprintln!("Failed to start emulation: {}", e);
-                    });
+                    if let Ok(mut gba) = self.gba.lock() {
+                        gba.set_bios(&bios_path).unwrap_or_else(|e| {
+                            eprintln!("Failed to load BIOS: {}", e);
+                        });
+                    } else {
+                        eprintln!("Failed to lock GBA instance for BIOS loading.");
+                    }
                 }
                 Task::none()
             }
@@ -199,6 +227,73 @@ impl Application {
             }
             Message::SetCpuMode(mode) => {
                 println!("Setting CPU mode to: {:?}", mode);
+                Task::none()
+            }
+            Message::ChangeRunningState => {
+                let running = self.emulation_running.load(Ordering::Relaxed);
+                self.emulation_running.store(!running, Ordering::Relaxed);
+
+                println!("Emulation running state changed to: {}", !running);
+                if running {
+                    println!("Pausing emulation...");
+                    Task::none()
+                } else {
+                    println!("Resuming emulation...");
+                    let emulation_running = self.emulation_running.clone();
+                    let gba = self.gba.clone();
+                    Task::perform(
+                        async move {
+                            while emulation_running.load(Ordering::SeqCst) {
+                                if let Err(e) = gba.lock().unwrap().emulate(None) {
+                                    eprintln!("Emulation error: {}", e);
+                                    break;
+                                }
+                            }
+                        },
+                        |_| Message::EmulationStopped,
+                    )
+                }
+            }
+            Message::StepEmulation => {
+                let gba = self.gba.clone();
+                Task::perform(
+                    async move {
+                        if let Err(e) = gba.lock().unwrap().emulate(None) {
+                            eprintln!("Emulation error: {}", e);
+                        }
+                    },
+                    |_| Message::EmulationStopped,
+                )
+            }
+            Message::EmulationStopped => {
+                self.emulation_running.store(false, Ordering::Relaxed);
+                if let Some(id) = self.debugger_window {
+                    if let Some(window) = self.windows.get_mut(&id) {
+                        let gba = self.gba.lock().unwrap();
+                        if let Some(debugger_window) =
+                            window.as_any_mut().downcast_mut::<DebuggerWindow>()
+                        {
+                            debugger_window.update_values(*gba.registers());
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::ResetEmulation => {
+                if let Ok(mut gba) = self.gba.lock() {
+                    gba.reset();
+                    if let Some(id) = self.debugger_window {
+                        if let Some(window) = self.windows.get_mut(&id) {
+                            if let Some(debugger_window) =
+                                window.as_any_mut().downcast_mut::<DebuggerWindow>()
+                            {
+                                debugger_window.update_values(*gba.registers());
+                            }
+                        }
+                    }
+                } else {
+                    eprintln!("Failed to lock GBA instance for reset.");
+                }
                 Task::none()
             }
         }

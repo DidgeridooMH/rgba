@@ -27,6 +27,16 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
+    pub fn registers(&self) -> &RegisterBank {
+        &self.registers
+    }
+
+    pub fn reset(&mut self) {
+        self.registers = RegisterBank::default();
+        self.fetched_instruction = None;
+        self.decoded_instruction = None;
+    }
+
     pub fn tick(&mut self, bus: &mut Bus) -> Result<usize, CoreError> {
         let cycles = self.execute(bus)?;
         self.decode()?;

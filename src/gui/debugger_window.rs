@@ -1,6 +1,14 @@
+use std::{
+    any::Any,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
+
 use iced::{
     alignment,
-    widget::{column, container, radio, row, text},
+    widget::{button, column, container, radio, row, text},
     Border, Theme,
 };
 
@@ -8,18 +16,44 @@ use super::{Message, Window};
 use crate::core::{CpuMode, InstructionMode, RegisterBank};
 
 pub struct DebuggerWindow {
-    cpu_mode: CpuMode,
-    instruction_mode: InstructionMode,
     registers: RegisterBank,
+    emulation_running: Arc<AtomicBool>,
 }
 
 impl DebuggerWindow {
-    pub fn new() -> Self {
+    pub fn new(emulation_running: Arc<AtomicBool>) -> Self {
         Self {
-            cpu_mode: CpuMode::User,
-            instruction_mode: InstructionMode::Arm,
             registers: RegisterBank::default(),
+            emulation_running,
         }
+    }
+
+    pub fn update_values(&mut self, registers: RegisterBank) {
+        self.registers = registers;
+    }
+
+    fn emulation_controls(&self) -> iced::Element<Message> {
+        let is_running = self.emulation_running.load(Ordering::SeqCst);
+        let run_label = if is_running { "Pause" } else { "Run" };
+        let step_message = if is_running {
+            None
+        } else {
+            Some(Message::StepEmulation)
+        };
+        let reset_message = if is_running {
+            None
+        } else {
+            Some(Message::ResetEmulation)
+        };
+
+        row![
+            button(run_label).on_press(Message::ChangeRunningState),
+            button("Step").on_press_maybe(step_message),
+            button("Reset").on_press_maybe(reset_message),
+        ]
+        .spacing(10)
+        .padding(10)
+        .into()
     }
 
     fn registers_view(&self) -> iced::Element<Message> {
@@ -48,7 +82,7 @@ impl DebuggerWindow {
                     field_value("R12", self.registers.reg(12)),
                     field_value("R13 (SP)", self.registers.reg(13)),
                     field_value("R14 (LR)", self.registers.reg(14)),
-                    field_value("R15 (PC)", self.registers.pc())
+                    field_value("R15 (PC)", self.registers.reg(15))
                 ],
             ]
             .into(),
@@ -63,13 +97,13 @@ impl DebuggerWindow {
                 radio(
                     "Arm",
                     InstructionMode::Arm,
-                    Some(self.instruction_mode),
+                    Some(self.registers.cpsr.instruction_mode),
                     Message::SetInstructionMode
                 ),
                 radio(
                     "Thumb",
                     InstructionMode::Thumb,
-                    Some(self.instruction_mode),
+                    Some(self.registers.cpsr.instruction_mode),
                     Message::SetInstructionMode
                 ),
             ]
@@ -87,37 +121,37 @@ impl DebuggerWindow {
                 radio(
                     "User",
                     CpuMode::User,
-                    Some(self.cpu_mode),
+                    Some(self.registers.cpsr.mode),
                     Message::SetCpuMode
                 ),
                 radio(
                     "FIQ",
                     CpuMode::Fiq,
-                    Some(self.cpu_mode),
+                    Some(self.registers.cpsr.mode),
                     Message::SetCpuMode
                 ),
                 radio(
                     "IRQ",
                     CpuMode::Irq,
-                    Some(self.cpu_mode),
+                    Some(self.registers.cpsr.mode),
                     Message::SetCpuMode
                 ),
                 radio(
                     "Supervisor",
                     CpuMode::Supervisor,
-                    Some(self.cpu_mode),
+                    Some(self.registers.cpsr.mode),
                     Message::SetCpuMode
                 ),
                 radio(
                     "Abort",
                     CpuMode::Abort,
-                    Some(self.cpu_mode),
+                    Some(self.registers.cpsr.mode),
                     Message::SetCpuMode
                 ),
                 radio(
                     "System",
                     CpuMode::System,
-                    Some(self.cpu_mode),
+                    Some(self.registers.cpsr.mode),
                     Message::SetCpuMode
                 )
             ]
@@ -196,11 +230,16 @@ impl Window for DebuggerWindow {
 
     fn view(&self) -> iced::Element<Message> {
         column![
+            self.emulation_controls(),
             row![self.instruction_mode_view(), self.cpu_mode_view()],
             self.registers_view()
         ]
         .padding(8)
         .spacing(8)
         .into()
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

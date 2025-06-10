@@ -1,5 +1,6 @@
 use super::status::{CpuMode, InstructionMode, ProgramStatusRegister};
 
+#[derive(Clone, Copy)]
 pub struct RegisterBank {
     reg: [u32; 16],
     fiq_reg: [u32; 7],

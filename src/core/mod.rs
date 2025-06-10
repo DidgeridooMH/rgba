@@ -13,7 +13,10 @@ mod lcd;
 
 use anyhow::{anyhow, Result};
 use lcd::Lcd;
-use std::{cell::RefCell, fmt, rc::Rc, time::Instant};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use memory::{system_io::SystemIoFlags, wram::Wram};
 
@@ -45,18 +48,18 @@ impl Gba {
     pub fn new() -> Self {
         let mut bus = Bus::default();
 
-        bus.register_region(0x4000000..=0x4000056, Rc::new(RefCell::new(Lcd::default())));
+        bus.register_region(0x4000000..=0x4000056, Arc::new(Mutex::new(Lcd::default())));
         bus.register_region(
             0x4000200..=0x4700000,
-            Rc::new(RefCell::new(SystemIoFlags::default())),
+            Arc::new(Mutex::new(SystemIoFlags::default())),
         );
         bus.register_region(
             0x3000000..=0x3FFFFFF,
-            Rc::new(RefCell::new(Wram::new(0x3000000, 0x8000))),
+            Arc::new(Mutex::new(Wram::new(0x3000000, 0x8000))),
         );
         bus.register_region(
             0x8000000..=0xFFFFFFF,
-            Rc::new(RefCell::new(Wram::new(0x8000000, 0x8000000))),
+            Arc::new(Mutex::new(Wram::new(0x8000000, 0x8000000))),
         );
 
         let mut cpu = Interpreter::default();
@@ -67,13 +70,12 @@ impl Gba {
     }
 
     pub fn set_bios(&mut self, bios_path: &str) -> Result<()> {
-        let bios = Rc::new(RefCell::new(Bios::new(bios_path)?));
+        let bios = Arc::new(Mutex::new(Bios::new(bios_path)?));
         self.bus.register_region(0..=0x3FFF, bios);
         Ok(())
     }
 
     pub fn emulate(&mut self, cycles: Option<usize>) -> Result<()> {
-        let start = Instant::now();
         let mut cycles_done = 0;
         loop {
             cycles_done += match self.cpu.tick(&mut self.bus) {
@@ -85,22 +87,19 @@ impl Gba {
                 if cycles_done >= cycles {
                     break;
                 }
+            } else {
+                break;
             }
-        }
-        let elapsed = start.elapsed();
-        let speed = cycles_done as f64 / elapsed.as_secs_f64();
-
-        println!("Cycles completed: {cycles_done}");
-        println!("Elapsed time: {}ms", elapsed.as_millis());
-        println!("Instructions per second: {speed}",);
-
-        const NECESSARY_SPEED: f64 = (16.78 * 1e6) / 4.0;
-        if speed < NECESSARY_SPEED {
-            println!(
-                "Warning: Emulation speed is too slow. Speed: {speed:.0} Instructions per second, Necessary speed: {NECESSARY_SPEED:.0} Instructions per second"
-            );
         }
 
         Ok(())
+    }
+
+    pub fn reset(&mut self) {
+        self.cpu.reset();
+    }
+
+    pub fn registers(&self) -> &RegisterBank {
+        self.cpu.registers()
     }
 }

@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use iced::{
     widget::{button, center, column, container, text},
     Element,
@@ -58,5 +60,9 @@ impl Window for GameWindow {
             center(text("Game rendering not implemented yet...")),
         ])
         .into()
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

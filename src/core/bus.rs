@@ -1,17 +1,16 @@
 use super::CoreError;
-use std::cell::RefCell;
 use std::fmt::Display;
 use std::ops::RangeInclusive;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
-pub trait Addressable {
+pub trait Addressable: Send + Sync {
     fn read_byte(&mut self, address: u32) -> u8;
     fn write_byte(&mut self, address: u32, data: u8) -> Result<(), CoreError>;
 }
 
 pub struct MemoryMapping {
     region: RangeInclusive<u32>,
-    component: Rc<RefCell<dyn Addressable>>,
+    component: Arc<Mutex<dyn Addressable>>,
 }
 
 #[derive(Default)]
@@ -35,7 +34,7 @@ impl Bus {
     pub fn register_region(
         &mut self,
         region: RangeInclusive<u32>,
-        component: Rc<RefCell<dyn Addressable>>,
+        component: Arc<Mutex<dyn Addressable>>,
     ) {
         self.regions.push(MemoryMapping { region, component });
     }
@@ -43,7 +42,7 @@ impl Bus {
     pub fn read_byte(&mut self, address: u32) -> Result<u8, CoreError> {
         for mapping in &self.regions {
             if mapping.region.contains(&address) {
-                return Ok(mapping.component.borrow_mut().read_byte(address));
+                return Ok(mapping.component.lock().unwrap().read_byte(address));
             }
         }
         Err(CoreError::InvalidRegion(address))
@@ -64,7 +63,7 @@ impl Bus {
     pub fn write_byte(&mut self, address: u32, data: u8) -> Result<(), CoreError> {
         for mapping in &self.regions {
             if mapping.region.contains(&address) {
-                return mapping.component.borrow_mut().write_byte(address, data);
+                return mapping.component.lock().unwrap().write_byte(address, data);
             }
         }
         Err(CoreError::InvalidRegion(address))
